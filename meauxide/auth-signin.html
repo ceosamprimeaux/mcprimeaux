@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeauxIDE | Mission Control</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com" nonce="OTgzMjQwMzUyLDcyNDI3MTM3NA=="></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" nonce="OTgzMjQwMzUyLDcyNDI3MTM3NA=="></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #050508; color: #E2E8F0; font-family: 'Inter', sans-serif; min-height: 100vh; }
+        #globe-canvas { position: fixed; inset: 0; z-index: 0; }
+        .login-card {
+            position: relative; z-index: 10; width: 100%; max-width: 400px; margin: 160px auto 40px; padding: 48px 40px;
+            background: rgba(20, 20, 30, 0.65); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08); border-top: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 32px; box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .login-card:hover { box-shadow: 0 0 50px rgba(0, 122, 255, 0.15); border-color: rgba(0, 122, 255, 0.3); }
+        .brand-logo { width: 96px; height: 96px; border-radius: 24px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); border: 2px solid rgba(255, 255, 255, 0.1); }
+        .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+        h1 { font-size: 20px; font-weight: 700; color: white; margin-bottom: 4px; letter-spacing: -0.01em; }
+        p.subtitle { font-size: 13px; color: #94A3B8; margin-bottom: 32px; }
+        .input-group { width: 100%; position: relative; margin-bottom: 16px; }
+        .input-field {
+            width: 100%; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px; padding: 14px 16px 14px 44px; color: white; font-size: 14px; outline: none; transition: all 0.2s;
+        }
+        .input-field:focus { border-color: #007AFF; background: rgba(0, 0, 0, 0.4); box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15); }
+        .input-field::placeholder { color: rgba(255,255,255,0.4); }
+        .input-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #64748B; pointer-events: none; }
+        .input-field:focus + .input-icon { color: #007AFF; }
+        .btn-primary {
+            width: 100%; padding: 14px; margin-top: 8px; border-radius: 14px; font-weight: 600; color: white;
+            background: #007AFF; border: none; cursor: pointer; font-size: 14px; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); transition: all 0.2s;
+        }
+        .btn-primary:hover { background: #0062CC; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0, 122, 255, 0.4); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+        .error-msg { color: #FF3B30; font-size: 12px; margin-top: 16px; text-align: center; min-height: 20px; opacity: 0; transition: opacity 0.2s; font-weight: 500; }
+        .error-msg.visible { opacity: 1; }
+        .footer { margin-top: 32px; font-size: 11px; color: rgba(255, 255, 255, 0.3); text-transform: uppercase; letter-spacing: 0.05em; }
+    </style>
+</head>
+<body>
+    <canvas id="globe-canvas"></canvas>
+
+    <div class="login-card">
+        <div class="brand-logo">
+            <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/17535395-1501-490a-ff3d-e43d7c16a000/avatar" alt="MeauxIDE">
+        </div>
+        <h1>MeauxIDE</h1>
+        <p class="subtitle">Sign in to Mission Control</p>
+
+        <form id="loginForm" onsubmit="handleLogin(event)" style="width: 100%;">
+            <div class="input-group">
+                <input type="email" id="email" class="input-field" placeholder="Email" required autocomplete="email">
+                <div class="input-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </div>
+            </div>
+            <div class="input-group">
+                <input type="password" id="password" class="input-field" placeholder="Password" required autocomplete="current-password">
+                <div class="input-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                </div>
+            </div>
+            <button type="submit" id="submitBtn" class="btn-primary">Sign in</button>
+            <div id="errorMsg" class="error-msg"></div>
+        </form>
+        <div class="footer">Protected System • Authorized Personnel Only</div>
+    </div>
+
+    <script nonce="OTgzMjQwMzUyLDcyNDI3MTM3NA==">
+        (function() {
+            var canvas = document.getElementById('globe-canvas');
+            var scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050508, 0.002);
+            var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 40;
+            var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio || 1);
+
+            var globeGroup = new THREE.Group();
+            scene.add(globeGroup);
+            globeGroup.add(new THREE.Mesh(new THREE.SphereGeometry(10, 64, 64), new THREE.MeshBasicMaterial({ color: 0x000000 })));
+            globeGroup.add(new THREE.Mesh(new THREE.IcosahedronGeometry(10.1, 2), new THREE.MeshBasicMaterial({ color: 0x007AFF, wireframe: true, transparent: true, opacity: 0.15 })));
+
+            var pGeo = new THREE.BufferGeometry();
+            var pCount = 800, rad = 10.2;
+            var pPos = new Float32Array(pCount * 3);
+            for (var i = 0; i < pCount; i++) {
+                var phi = Math.acos(-1 + (2 * i) / pCount);
+                var theta = Math.sqrt(pCount * Math.PI) * phi;
+                pPos[i * 3] = rad * Math.cos(theta) * Math.sin(phi);
+                pPos[i * 3 + 1] = rad * Math.sin(theta) * Math.sin(phi);
+                pPos[i * 3 + 2] = rad * Math.cos(phi);
+            }
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+            globeGroup.add(new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0x38BDF8, size: 0.12, transparent: true, opacity: 0.9 })));
+
+            var ringMat = new THREE.MeshBasicMaterial({ color: 0x007AFF, transparent: true, opacity: 0.1, side: THREE.DoubleSide });
+            var ring1 = new THREE.Mesh(new THREE.TorusGeometry(14, 0.02, 16, 100), ringMat);
+            ring1.rotation.x = Math.PI / 1.7;
+            globeGroup.add(ring1);
+            var ring2 = new THREE.Mesh(new THREE.TorusGeometry(18, 0.02, 16, 100), ringMat);
+            ring2.rotation.x = Math.PI / 2.2;
+            ring2.rotation.y = -0.2;
+            globeGroup.add(ring2);
+
+            var sGeo = new THREE.BufferGeometry();
+            var sCount = 2000;
+            var sPos = new Float32Array(sCount * 3);
+            for (var i = 0; i < sCount; i++) {
+                sPos[i * 3] = (Math.random() - 0.5) * 500;
+                sPos[i * 3 + 1] = (Math.random() - 0.5) * 500;
+                sPos[i * 3 + 2] = (Math.random() - 0.5) * 500;
+            }
+            sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+            var starField = new THREE.Points(sGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.6 }));
+            scene.add(starField);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                globeGroup.rotation.y += 0.0015;
+                ring1.rotation.z -= 0.002;
+                ring2.rotation.z += 0.001;
+                starField.rotation.y += 0.0003;
+                renderer.render(scene, camera);
+            }
+            animate();
+            window.addEventListener('resize', function() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            window.handleLogin = function(e) {
+                e.preventDefault();
+                var email = document.getElementById('email').value.trim();
+                var password = document.getElementById('password').value;
+                var btn = document.getElementById('submitBtn');
+                var error = document.getElementById('errorMsg');
+                error.classList.remove('visible');
+                error.textContent = '';
+
+                if (!password) {
+                    error.textContent = 'Enter your password.';
+                    error.classList.add('visible');
+                    return;
+                }
+                if (password === '1937') {
+                    btn.textContent = 'Signing in...';
+                    btn.disabled = true;
+                    try {
+                        if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('meauxide_auth', '1');
+                    } catch (err) {}
+                    setTimeout(function() {
+                        try {
+                            var topWin = window.top;
+                            if (topWin && topWin.location) {
+                                topWin.location.replace('/dashboard');
+                            } else {
+                                window.location.replace('/dashboard');
+                            }
+                        } catch (err) {
+                            window.location.href = '/dashboard';
+                        }
+                    }, 400);
+                } else {
+                    error.textContent = 'Invalid password.';
+                    error.classList.add('visible');
+                }
+            };
+        })();
+    </script>
+</body>
+</html>

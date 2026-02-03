@@ -1,0 +1,10 @@
+# MeauxIDE - Cloudflare Pages + D1
+# Deploy: from repo root: npx wrangler pages deploy meauxide --project-name=meauxide
+name = "meauxide"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "inneranimalmedia-business"
+database_id = "cf87b717-d4e2-4cf8-bab0-a81268e32d49"

@@ -1,0 +1,55 @@
+{
+  "name": "meauxide",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-03-07",
+  "compatibility_flags": ["nodejs_compat"],
+  // Cloudflare Images/Stream: account hash for imagedelivery.net; account ID for API. Set secret: npx wrangler secret put CLOUDFLARE_IMAGES_API_TOKEN (token with Images read/edit, Stream read/edit, Account Analytics)
+  "vars": {
+    "CLOUDFLARE_IMAGES_ACCOUNT_HASH": "g7wf09fCONpnidkRnR_5vw",
+    "CLOUDFLARE_ACCOUNT_ID": "ede6590ac0d2fb7daf155b35653457b2"
+  },
+  // Optional: Cursor API key — set via dashboard or: npx wrangler secret put CURSOR_API_KEY
+  // Keep observability + compatibility_flags in sync with dashboard so CLI deploys match.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "inneranimalmedia-business",
+      "database_id": "cf87b717-d4e2-4cf8-bab0-a81268e32d49"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "inneranimalmedia-assets"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "meauxide-rag"
+    }
+  ]
+}

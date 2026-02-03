@@ -1,0 +1,2407 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeauxIDE | Mission Control</title>
+    <link rel="icon"
+        href="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/f6070eae-07fc-4908-7d27-2584aad2c800/thumbnail">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="meaux-themes.css">
+    <script src="https://cdn.tailwindcss.com" nonce="MTY0OTgxNjc4OSwzMzc4NjMyOTE0"></script>
+    <script nonce="MTY0OTgxNjc4OSwzMzc4NjMyOTE0">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--color-primary)',
+                        accent: 'var(--color-accent)',
+                        surface: 'var(--bg-surface)',
+                        panel: 'var(--bg-panel)',
+                        elevated: 'var(--bg-elevated)',
+                        border: 'var(--color-border)',
+                        text: 'var(--color-text)',
+                        muted: 'var(--color-muted)',
+                        success: 'var(--color-success)',
+                        error: 'var(--color-error)'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body data-theme="tactical-sandstone"
+    class="bg-surface text-text overflow-hidden h-screen font-sans selection:bg-primary/20">
+    <!-- Public: landing page with R2 globe scene (no black header) -->
+    <div id="app-public" class="h-full flex flex-col">
+        <main class="flex-1 min-h-0 flex flex-col relative">
+            <!-- Globe / login scene (R2) -->
+            <iframe id="landing-scene" src="/auth-signin.html" class="w-full flex-1 min-h-0 border-0 flex-shrink-0"
+                title="MeauxIDE"></iframe>
+            <!-- Single Sign in link (no bottom bar); when authed, show Go to Dashboard -->
+            <div id="hero-guest" class="absolute top-4 right-4 z-10">
+                <button type="button" id="hero-signin-btn"
+                    class="px-4 py-2 rounded-lg text-sm font-medium bg-black/50 text-white hover:bg-black/70 border border-white/20 transition-colors">Sign
+                    in</button>
+            </div>
+            <div id="hero-authed" class="hidden absolute top-4 right-4 z-10">
+                <a href="/dashboard"
+                    class="inline-block px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-black hover:opacity-90 transition-opacity">Go
+                    to Dashboard</a>
+            </div>
+        </main>
+        <!-- Auth modal: MeauxIDE — no presets; sign in → /dashboard -->
+        <div id="auth-modal"
+            class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div class="bg-panel border border-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                <div class="p-6 border-b border-border">
+                    <h2 id="auth-modal-title" class="text-xl font-bold">MeauxIDE</h2>
+                    <p class="text-muted text-sm mt-1">Sign in to Mission Control</p>
+                </div>
+                <form id="login-form" class="p-6 space-y-4" method="post" action="javascript:void(0)"
+                    onsubmit="event.preventDefault(); if (window.ide) window.ide.handleLogin(event); return false;">
+                    <label class="block">
+                        <span class="text-xs font-medium text-muted block mb-1">Email</span>
+                        <input type="email" id="login-email" name="email" autocomplete="email"
+                            class="w-full bg-surface border border-border rounded-lg px-4 py-3 text-sm outline-none focus:border-primary"
+                            placeholder="" required>
+                    </label>
+                    <label class="block">
+                        <span class="text-xs font-medium text-muted block mb-1">Password</span>
+                        <input type="password" id="login-password" name="password" autocomplete="current-password"
+                            class="w-full bg-surface border border-border rounded-lg px-4 py-3 text-sm outline-none focus:border-primary"
+                            placeholder="" required>
+                    </label>
+                    <div id="auth-error" class="hidden text-sm text-error"></div>
+                    <button type="submit"
+                        class="w-full py-3 rounded-xl bg-primary text-black font-semibold hover:opacity-90 transition-opacity">Sign
+                        in</button>
+                </form>
+                <div class="px-6 pb-6">
+                    <button type="button" id="auth-modal-close"
+                        class="text-sm text-muted hover:text-primary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Dashboard: sidebar + main (requires auth) -->
+    <div id="app-dashboard" class="hidden h-full flex">
+        <script>
+                (function () {
+                    var path = (window.location.pathname || '/').replace(/\/+/g, '/').replace(/\/$/, '') || '';
+                    var isDashboard = path === 'dashboard' || path === '/dashboard' || path.indexOf('/dashboard/') === 0 || path.indexOf('dashboard/') === 0;
+                    if (!isDashboard) return;
+                    if (sessionStorage.getItem('meauxide_auth') !== '1') { window.location.replace('/'); return; }
+                    var pub = document.getElementById('app-public');
+                    var dash = document.getElementById('app-dashboard');
+                    if (pub) pub.classList.add('hidden');
+                    if (dash) dash.classList.remove('hidden');
+                })();
+        </script>
+        <div id="ide-root" class="h-full flex w-full min-h-0 min-w-0">
+            <!-- Left Nav: dockable; mobile: overlay; desktop: persist open/closed -->
+            <aside id="sidebar"
+                class="sidebar w-56 bg-panel border-r border-border flex flex-col z-40 flex-shrink-0 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:translate-x-[-100%] max-md:transition-transform max-md:duration-300 max-md:shadow-xl md:transition-transform md:duration-200 md:translate-x-0">
+                <div class="p-4 border-b border-border flex-shrink-0 flex items-center justify-center">
+                    <a href="/dashboard"
+                        class="rounded-lg overflow-hidden border border-border hover:border-primary/50 transition-colors"
+                        onclick="ide.navTo('dashboard'); return false;" aria-label="Dashboard">
+                        <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/d1864d11-4485-4a38-1849-168f567aa200/avatar"
+                            alt="" class="w-8 h-8 object-cover">
+                    </a>
+                </div>
+                <nav class="flex-1 py-4 px-3 space-y-0.5 min-h-0 overflow-y-auto">
+                    <a href="/dashboard" id="nav-dashboard"
+                        class="nav-link active flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('dashboard'); return false;">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/dashboard/projects" id="nav-projects"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('projects'); return false;">
+                        <i data-lucide="folder-kanban" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Projects</span>
+                    </a>
+                    <a href="/dashboard/library" id="nav-library"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('library'); return false;">
+                        <i data-lucide="library" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Library</span>
+                    </a>
+                    <a href="/dashboard/workspace" id="nav-workspaces"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('workspaces'); return false;">
+                        <i data-lucide="layers" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Workspace</span>
+                    </a>
+                    <a href="/dashboard/meauxide" id="nav-workspace"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('workspace'); return false;">
+                        <i data-lucide="code" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>MeauxIDE</span>
+                    </a>
+                    <a href="/dashboard/analytics" id="nav-analytics"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('analytics'); return false;">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Analytics</span>
+                    </a>
+                    <a href="/dashboard/tools" id="nav-tools"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('tools'); return false;">
+                        <i data-lucide="wrench" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Tools</span>
+                    </a>
+                    <a href="/dashboard/gallery" id="nav-gallery"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('gallery'); return false;">
+                        <i data-lucide="image" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>Gallery</span>
+                    </a>
+                    <a href="/dashboard/meauxmedia" id="nav-meauxmedia"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('meauxmedia'); return false;">
+                        <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/a09c7e5b-074d-415b-e77d-40b1256cf400/avatar"
+                            alt="MeauxMedia" class="w-4 h-4 rounded-full object-cover">
+                        <span>MeauxMedia</span>
+                    </a>
+                    <a href="/dashboard/meauxsql" id="nav-meauxsql"
+                        class="nav-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-text hover:bg-surface transition-colors"
+                        onclick="ide.navTo('meauxsql'); return false;">
+                        <i data-lucide="database" class="w-4 h-4 flex-shrink-0"></i>
+                        <span>MeauxSQL</span>
+                    </a>
+                </nav>
+                <div class="p-3 border-t border-border space-y-1">
+                    <select id="themeSelect" onchange="ide.changeTheme(this.value)" title="Theme"
+                        class="w-full bg-surface border border-border rounded-md text-xs font-medium px-3 py-2 outline-none cursor-pointer hover:border-primary/50 transition-colors">
+                        <optgroup label="Inner Animal">
+                            <option value="inner-animal-dark">IA Dark</option>
+                            <option value="inner-animal-wild">IA Wild</option>
+                            <option value="inner-animal-ocean">IA Ocean</option>
+                        </optgroup>
+                        <optgroup label="Tactical">
+                            <option value="tactical-sandstone">Sandstone</option>
+                            <option value="meaux-workflow">Workflow</option>
+                            <option value="meaux-hacker-green">Hacker</option>
+                        </optgroup>
+                        <optgroup label="Premium">
+                            <option value="meaux-clay-dark">Clay Dark</option>
+                            <option value="meaux-ios-dark">iOS Dark</option>
+                            <option value="meaux-code-dark">VS Code</option>
+                            <option value="meaux-cyber-punk">CyberPunk</option>
+                        </optgroup>
+                        <optgroup label="MeauxCLOUD">
+                            <option value="meauxcloud-peach">Peach</option>
+                        </optgroup>
+                    </select>
+                    <button onclick="ide.openSettings()"
+                        class="nav-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-primary hover:bg-surface transition-colors">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>Settings</span>
+                    </button>
+                    <button id="header-user-btn" onclick="ide.toggleUserMenu()"
+                        class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted hover:text-primary hover:bg-surface transition-colors"
+                        aria-label="User menu">
+                        <img id="sidebar-avatar-img"
+                            src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/82791d36-cda6-43a6-d402-9406c6392e00/avatar"
+                            alt="" class="w-8 h-8 rounded-full object-cover border border-border">
+                        <span>Profile</span>
+                    </button>
+                    <a href="/" onclick="sessionStorage.removeItem('meauxide_auth'); return true;"
+                        class="block w-full px-3 py-2 rounded-lg text-xs font-medium text-muted hover:text-error hover:bg-surface transition-colors">Log
+                        out</a>
+                </div>
+            </aside>
+
+            <!-- Main: top bar + content -->
+            <div class="flex-1 flex flex-col min-w-0 min-h-0">
+                <!-- Hamburger: above header z-index; morphs to X when nav open -->
+                <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-30 hidden max-md:block"
+                    onclick="ide.toggleSidebar()" aria-hidden="true"></div>
+                <button id="hamburger" type="button" onclick="ide.toggleSidebar()"
+                    class="fixed top-3 left-3 z-[60] w-11 h-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-panel border border-border text-muted hover:text-primary hover:bg-surface transition-colors touch-manipulation md:left-4"
+                    aria-label="Toggle sidebar">
+                    <i data-lucide="panel-left" id="hamburger-icon-menu" class="w-5 h-5" aria-hidden="true"></i>
+                    <i data-lucide="x" id="hamburger-icon-close" class="w-5 h-5 hidden" aria-hidden="true"></i>
+                </button>
+                <!-- Top bar: search + D1 + actions; app icon (IA) on right for cleaner look -->
+                <header
+                    class="h-12 pl-14 md:pl-14 bg-panel border-b border-border flex items-center gap-3 md:gap-4 px-3 md:px-4 z-30 flex-shrink-0">
+                    <div class="flex-1 min-w-0 max-w-xl">
+                        <label for="header-search" class="sr-only">Search</label>
+                        <div class="relative">
+                            <i data-lucide="search"
+                                class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none"></i>
+                            <input id="header-search" type="search" placeholder="Search files, agent_sam..."
+                                class="w-full bg-surface border border-border rounded-md text-xs font-medium pl-8 pr-3 py-1.5 outline-none focus:border-primary transition-colors placeholder:text-muted min-w-0"
+                                aria-label="Search">
+                        </div>
+                    </div>
+                    <div id="d1-status"
+                        class="flex items-center gap-2 px-2 py-1 rounded-md bg-surface border border-border text-[10px] font-mono text-muted flex-shrink-0"
+                        title="D1 connectivity">D1: --</div>
+                    <button onclick="ide.runWorkflow()" title="Run workflow"
+                        class="p-2 rounded-lg bg-primary text-black hover:opacity-90 transition-opacity flex-shrink-0">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                    </button>
+                    <button id="header-user-avatar" onclick="ide.toggleUserMenu()"
+                        class="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden border-2 border-border hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                        aria-label="Profile">
+                        <img id="header-avatar-img"
+                            src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/82791d36-cda6-43a6-d402-9406c6392e00/avatar"
+                            alt="Profile" class="w-full h-full object-cover">
+                    </button>
+                    <a href="/dashboard" onclick="ide.navTo('dashboard'); return false;"
+                        class="flex-shrink-0 rounded-full overflow-hidden border-2 border-border hover:border-primary/50 transition-colors"
+                        aria-label="MeauxIDE">
+                        <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/d1864d11-4485-4a38-1849-168f567aa200/avatar"
+                            alt="MeauxIDE" class="w-8 h-8 object-cover">
+                    </a>
+                </header>
+
+                <!-- Page content area: flex-1 min-h-0 so content fits and scrolls -->
+                <main class="flex-1 overflow-hidden flex flex-col min-h-0 min-w-0">
+                    <!-- Dashboard page (D1-backed) — default view when /dashboard -->
+                    <div id="view-dashboard" class="page-view flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-4xl">
+                            <h1 class="text-xl font-bold mb-6">Dashboard</h1>
+                            <div id="dashboard-stats" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                                <div class="bg-panel border border-border rounded-xl p-4">
+                                    <div class="text-[10px] font-bold uppercase text-muted mb-1">Agent configs</div>
+                                    <div id="stat-configs" class="text-2xl font-bold">--</div>
+                                </div>
+                                <div class="bg-panel border border-border rounded-xl p-4">
+                                    <div class="text-[10px] font-bold uppercase text-muted mb-1">Active sessions</div>
+                                    <div id="stat-sessions" class="text-2xl font-bold">--</div>
+                                </div>
+                                <div class="bg-panel border border-border rounded-xl p-4">
+                                    <div class="text-[10px] font-bold uppercase text-muted mb-1">Commands</div>
+                                    <div id="stat-commands" class="text-2xl font-bold">--</div>
+                                </div>
+                            </div>
+                            <div id="dashboard-db-status" class="text-sm text-muted">Loading D1...</div>
+                            <!-- Goal: car / savings / grants -->
+                            <section class="mt-8 p-6 bg-panel border border-border rounded-2xl">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    <i data-lucide="target" class="w-4 h-4"></i> My goal — Cadillac CTS-V
+                                </h2>
+                                <div class="flex flex-col sm:flex-row gap-6 items-start">
+                                    <div
+                                        class="flex-shrink-0 w-full sm:w-48 rounded-xl overflow-hidden border border-border">
+                                        <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/3b56932d-df74-40b2-9c51-b46b983a3f00/medium"
+                                            alt="Cadillac CTS-V goal" class="w-full h-32 object-cover">
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                                            <div class="bg-elevated rounded-lg p-3">
+                                                <div class="text-[10px] font-bold uppercase text-muted">Saved</div>
+                                                <div class="flex items-center gap-2"><span id="goal-saved"
+                                                        class="text-xl font-bold">$0</span><input type="number"
+                                                        id="goal-saved-input" placeholder="0" step="0.01" min="0"
+                                                        class="w-20 text-sm bg-surface border border-border rounded px-2 py-1"
+                                                        onchange="ide.updateGoalSaved(this.value)"></div>
+                                            </div>
+                                            <div class="bg-elevated rounded-lg p-3">
+                                                <div class="text-[10px] font-bold uppercase text-muted">Paid off</div>
+                                                <div id="goal-paid-off" class="text-xl font-bold text-success">$6,800
+                                                </div>
+                                            </div>
+                                            <div class="bg-elevated rounded-lg p-3">
+                                                <div class="text-[10px] font-bold uppercase text-muted">Owed</div>
+                                                <div id="goal-owed" class="text-xl font-bold">$4,000</div>
+                                            </div>
+                                            <div class="bg-elevated rounded-lg p-3">
+                                                <div class="text-[10px] font-bold uppercase text-muted">Paying off</div>
+                                                <div id="goal-monthly" class="text-xl font-bold text-muted">-$450/mo
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p class="text-xs text-muted mb-3">Car totalled — raising funds for replacement.
+                                            Use agent_sam to plan grants, GoFundMe, emergency funds, or fundraising.</p>
+                                        <button type="button" onclick="ide.openAgentWithGoalPrompt()"
+                                            class="px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-black hover:opacity-90">Ask
+                                            agent_sam: grants & fundraising plan</button>
+                                    </div>
+                                </div>
+                            </section>
+                            <!-- Quick: Run Cursor Agent (mobile-friendly) -->
+                            <section class="mt-6 p-4 bg-panel border-2 border-primary/40 rounded-2xl">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <i data-lucide="send" class="w-4 h-4"></i> Run Cursor Agent
+                                </h2>
+                                <p class="text-[11px] text-muted mb-3">Launch a Cursor background agent from your phone.
+                                    Plan & work on a GitHub repo from anywhere.</p>
+                                <button type="button"
+                                    onclick="ide.navTo('analytics'); setTimeout(function(){ document.getElementById('cursor-agent-prompt')?.scrollIntoView({ behavior: 'smooth' }); }, 300); return false;"
+                                    class="w-full sm:w-auto px-4 py-3 rounded-lg text-sm font-semibold bg-primary text-black hover:opacity-90 flex items-center justify-center gap-2">
+                                    <i data-lucide="play" class="w-4 h-4"></i> Open Run Agent
+                                </button>
+                            </section>
+                            <!-- Roadmap / To-do -->
+                            <section class="mt-8 p-6 bg-panel border border-border rounded-2xl">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    <i data-lucide="list-todo" class="w-4 h-4"></i> Roadmap &amp; To-do
+                                </h2>
+                                <ul class="space-y-2 text-sm text-muted">
+                                    <li class="flex items-center gap-2"><span class="text-primary font-bold">·</span>
+                                        Facebook / Instagram / TikTok / YouTube API connection</li>
+                                    <li class="flex items-center gap-2"><span class="text-primary font-bold">·</span>
+                                        Streaming · SFU · Realtime (live / low-latency)</li>
+                                    <li class="flex items-center gap-2"><span class="text-primary font-bold">·</span>
+                                        OAuth for Cursor &amp; social (safe, scoped access)</li>
+                                    <li class="flex items-center gap-2"><span class="text-primary font-bold">·</span>
+                                        GitHub integration (optional for users)</li>
+                                </ul>
+                            </section>
+                        </div>
+                    </div>
+                    <!-- Projects page: 2-col grid (mobile-first) + lightbox -->
+                    <div id="view-projects" class="page-view hidden flex-1 min-h-0 overflow-auto p-4 sm:p-6">
+                        <div class="max-w-4xl w-full">
+                            <h1 class="text-xl font-bold mb-4">Projects</h1>
+                            <p class="text-sm text-muted mb-4">Tap a project for time tracking, completion %, and last
+                                activity.</p>
+                            <div id="projects-grid"
+                                class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 gap-3 sm:gap-4">
+                                <!-- Filled by loadProjects() from static list + D1 merge -->
+                            </div>
+                            <div id="projects-list" class="sr-only" aria-hidden="true"></div>
+                        </div>
+                    </div>
+                    <!-- Project lightbox: time, % completion, last worked on -->
+                    <div id="project-lightbox"
+                        class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                        onclick="if (event.target === this) ide.closeProjectLightbox();">
+                        <div class="bg-panel border border-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+                            onclick="event.stopPropagation();">
+                            <div class="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
+                                <h3 id="project-lightbox-title" class="font-bold text-lg truncate pr-2">Project</h3>
+                                <button type="button" onclick="ide.closeProjectLightbox()"
+                                    class="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl hover:bg-surface text-muted"
+                                    aria-label="Close">×</button>
+                            </div>
+                            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                                <div class="flex justify-center">
+                                    <img id="project-lightbox-img" src="" alt=""
+                                        class="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border border-border">
+                                </div>
+                                <p id="project-lightbox-desc" class="text-sm text-muted"></p>
+                                <div class="grid grid-cols-1 gap-3 text-sm">
+                                    <div class="flex justify-between items-center py-2 border-b border-border">
+                                        <span class="text-muted">Time tracked</span>
+                                        <span id="project-lightbox-time" class="font-medium">—</span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-2 border-b border-border">
+                                        <span class="text-muted">Suggested completion</span>
+                                        <span id="project-lightbox-pct" class="font-medium">—</span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-2 border-b border-border">
+                                        <span class="text-muted">Last worked on</span>
+                                        <span id="project-lightbox-last" class="font-medium">—</span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-2">
+                                        <span class="text-muted">Status</span>
+                                        <span id="project-lightbox-status"
+                                            class="px-2 py-0.5 rounded text-xs font-medium">—</span>
+                                    </div>
+                                </div>
+                                <a id="project-lightbox-link" href="#" target="_blank" rel="noopener"
+                                    class="hidden inline-flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-black font-semibold text-sm hover:opacity-90">Open
+                                    project</a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Analytics page (finance + AI/API spend) -->
+                    <div id="view-analytics" class="page-view hidden flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-5xl mx-auto">
+                            <h1 class="text-xl font-bold mb-2">Analytics</h1>
+                            <p class="text-sm text-muted mb-6">Finance, Cursor/Claude/ChatGPT spend, and subscriptions.
+                                Import Cursor usage CSV to track meauxbility@gmail.com (Pro) and add other accounts.</p>
+                            <div class="flex gap-2 mb-6">
+                                <select id="analytics-days" onchange="ide.loadAnalytics()"
+                                    class="bg-panel border border-border rounded-lg text-xs font-medium px-3 py-2 outline-none cursor-pointer">
+                                    <option value="7">Last 7 days</option>
+                                    <option value="30" selected>Last 30 days</option>
+                                    <option value="90">Last 90 days</option>
+                                    <option value="all">All time</option>
+                                </select>
+                            </div>
+                            <!-- Finance -->
+                            <section class="mb-10">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    <i data-lucide="wallet" class="w-4 h-4"></i> Finance
+                                </h2>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Total (period)
+                                        </div>
+                                        <div id="finance-total" class="text-2xl font-bold">--</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Entries</div>
+                                        <div id="finance-count" class="text-2xl font-bold">--</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Categories</div>
+                                        <div id="finance-categories" class="text-2xl font-bold">--</div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-xs font-semibold text-muted mb-3">By month</div>
+                                        <div class="w-full min-h-[200px] h-[200px] relative">
+                                            <canvas id="chart-finance-month"></canvas>
+                                        </div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-xs font-semibold text-muted mb-3">By category</div>
+                                        <div class="w-full min-h-[200px] h-[200px] relative">
+                                            <canvas id="chart-finance-category"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-4 p-4 bg-panel border border-border rounded-xl">
+                                    <div class="text-xs font-semibold text-muted mb-2">Add finance entry</div>
+                                    <form id="finance-add-form" onsubmit="ide.addFinanceEntry(event); return false;"
+                                        class="flex flex-wrap gap-2 items-end">
+                                        <input type="date" id="finance-add-date"
+                                            class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm"
+                                            required>
+                                        <input type="number" id="finance-add-amount" step="0.01" placeholder="Amount"
+                                            class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-24"
+                                            required>
+                                        <input type="text" id="finance-add-category" placeholder="Category"
+                                            class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-28"
+                                            required>
+                                        <input type="text" id="finance-add-desc" placeholder="Description (optional)"
+                                            class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm flex-1 min-w-[120px]">
+                                        <button type="submit"
+                                            class="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-fg hover:opacity-90">Add</button>
+                                    </form>
+                                    <p id="finance-add-msg" class="text-[11px] text-muted mt-2 hidden"></p>
+                                </div>
+                                <p id="finance-note" class="text-[11px] text-muted hidden"></p>
+                            </section>
+                            <!-- Cursor connection: links, API key status, spend cap -->
+                            <section class="mb-10">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    <i data-lucide="link" class="w-4 h-4"></i> Cursor connection
+                                </h2>
+                                <div class="mb-4 p-4 bg-panel border border-border rounded-xl">
+                                    <p class="text-[11px] text-muted mb-3">Get your Cursor API key (BYOK) and export
+                                        usage. Add the key to MeauxIDE via Wrangler so we can offer full Cursor
+                                        capabilities here (OAuth coming later for safety).</p>
+                                    <div class="flex flex-wrap gap-2 items-center mb-3">
+                                        <a id="cursor-link-api-keys"
+                                            href="https://cursor.com/dashboard?tab=integrations" target="_blank"
+                                            rel="noopener"
+                                            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-elevated border border-border hover:border-primary/50 text-primary">User
+                                            API keys (Integrations)</a>
+                                        <a id="cursor-link-dashboard" href="https://cursor.com/dashboard"
+                                            target="_blank" rel="noopener"
+                                            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-elevated border border-border hover:border-primary/50 text-primary">Dashboard
+                                            · Billing</a>
+                                    </div>
+                                    <div class="flex flex-wrap gap-4 items-center mb-2">
+                                        <span id="cursor-status-msg" class="text-[11px] text-muted">API key:
+                                            checking…</span>
+                                        <span id="cursor-spend-cap-status" class="text-[11px] text-muted hidden"></span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2 items-center">
+                                        <label class="text-[11px] text-muted">Spend cap (this period): $</label>
+                                        <input type="number" id="cursor-spend-cap-input" min="0" step="1"
+                                            placeholder="e.g. 40"
+                                            class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-20">
+                                        <button type="button" id="cursor-spend-cap-save"
+                                            onclick="ide.saveCursorSpendCap()"
+                                            class="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-black hover:opacity-90">Save
+                                            cap</button>
+                                    </div>
+                                    <p id="cursor-spend-cap-warning"
+                                        class="text-xs font-semibold text-amber-600 mt-3 hidden"></p>
+                                </div>
+                                <!-- Run Cursor Agent (mobile-friendly: plan & work from phone) -->
+                                <div class="mb-4 p-4 bg-panel border border-primary/40 rounded-xl">
+                                    <h3
+                                        class="text-xs font-bold uppercase text-primary tracking-wider mb-2 flex items-center gap-2">
+                                        <i data-lucide="send" class="w-4 h-4"></i> Run Cursor Agent
+                                    </h3>
+                                    <p class="text-[11px] text-muted mb-3">Launch a Cursor background agent from your
+                                        phone. Uses your Pro+ key. Prompt + GitHub repo required.</p>
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="text-[11px] font-medium text-muted block mb-1">What should the
+                                                agent do?</label>
+                                            <textarea id="cursor-agent-prompt" rows="3"
+                                                placeholder="e.g. Add a README section for local dev setup"
+                                                class="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm resize-y min-h-[80px]"></textarea>
+                                        </div>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="text-[11px] font-medium text-muted block mb-1">GitHub repo
+                                                    URL</label>
+                                                <input type="url" id="cursor-agent-repo"
+                                                    placeholder="https://github.com/owner/repo"
+                                                    class="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="text-[11px] font-medium text-muted block mb-1">Branch /
+                                                    ref</label>
+                                                <input type="text" id="cursor-agent-ref" value="main" placeholder="main"
+                                                    class="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm">
+                                            </div>
+                                        </div>
+                                        <button type="button" id="cursor-agent-launch-btn"
+                                            onclick="ide.launchCursorAgent()"
+                                            class="w-full sm:w-auto px-4 py-3 rounded-lg text-sm font-semibold bg-primary text-black hover:opacity-90 flex items-center justify-center gap-2">
+                                            <i data-lucide="play" class="w-4 h-4"></i> Launch agent
+                                        </button>
+                                    </div>
+                                    <div id="cursor-agent-result"
+                                        class="mt-3 p-3 bg-elevated border border-border rounded-lg text-[11px] hidden">
+                                    </div>
+                                </div>
+                            </section>
+                            <!-- Cursor & AI spend (Neurons) -->
+                            <section class="mb-10">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    <i data-lucide="brain" class="w-4 h-4"></i> Cursor & AI spend
+                                </h2>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                                    <div class="bg-panel border border-border rounded-xl p-4 shadow-sm">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Est. cost (period)
+                                        </div>
+                                        <div id="neurons-cost" class="text-2xl font-bold">--</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4 shadow-sm">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Total tokens</div>
+                                        <div id="neurons-tokens" class="text-2xl font-bold">--</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4 shadow-sm">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">API calls</div>
+                                        <div id="neurons-count" class="text-2xl font-bold">--</div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-3">
+                                    <div class="bg-panel border border-border rounded-xl p-4 shadow-sm">
+                                        <div class="text-xs font-semibold text-muted mb-3">Cost by day</div>
+                                        <div class="w-full min-h-[200px] h-[200px] relative">
+                                            <canvas id="chart-neurons-day"></canvas>
+                                        </div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4 shadow-sm">
+                                        <div class="text-xs font-semibold text-muted mb-3">By provider</div>
+                                        <div class="w-full min-h-[200px] h-[200px] relative">
+                                            <canvas id="chart-neurons-provider"></canvas>
+                                        </div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4 shadow-sm">
+                                        <div class="text-xs font-semibold text-muted mb-3">By account</div>
+                                        <div class="w-full min-h-[200px] h-[200px] relative">
+                                            <canvas id="chart-neurons-account"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="text-[11px] text-muted mb-4">Charts show usage + invoice rows. Meauxbility may
+                                    include both CSV usage and invoice lines for the same period.</p>
+                                <div class="mb-4 p-4 bg-panel border border-border rounded-xl">
+                                    <div class="text-xs font-semibold text-muted mb-2">Import Cursor usage CSV</div>
+                                    <p class="text-[11px] text-muted mb-2">Upload Cursor usage export
+                                        (meauxbility@gmail.com Pro or other account). One account at a time; eliminate
+                                        duplicates by importing once per account.</p>
+                                    <div class="flex flex-wrap gap-2 items-center">
+                                        <input type="file" id="cursor-csv-input" accept=".csv"
+                                            class="text-sm file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border file:border-border file:bg-elevated file:text-sm">
+                                        <input type="text" id="cursor-import-account" placeholder="your@email.com"
+                                            class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-52">
+                                        <button type="button" id="cursor-import-btn" onclick="ide.importCursorCsv()"
+                                            class="px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-black hover:opacity-90">Import</button>
+                                    </div>
+                                    <p id="cursor-import-msg" class="text-[11px] text-muted mt-2 hidden"></p>
+                                </div>
+                                <p id="neurons-note" class="text-[11px] text-muted hidden"></p>
+                                <!-- Tips: reduce Cursor spend -->
+                                <details class="mt-6 p-4 bg-panel border border-border rounded-xl">
+                                    <summary class="text-xs font-semibold text-primary cursor-pointer select-none">How
+                                        to reduce Cursor usage &amp; overspend</summary>
+                                    <ul class="mt-3 space-y-2 text-[11px] text-muted list-disc list-inside">
+                                        <li><strong>Set a hard limit</strong> in Cursor → Settings → Usage. Cap at
+                                            $30–40/mo so overages are blocked.</li>
+                                        <li><strong>Prefer “Included” / non–On-Demand</strong> when possible; On-Demand
+                                            and Opus/thinking models cost more.</li>
+                                        <li><strong>Narrow context</strong>: use .cursorignore and smaller folders so
+                                            fewer tokens are sent per request.</li>
+                                        <li><strong>One Cursor Pro account</strong> if you can: consolidate to
+                                            meauxbility or inneranimalclothing to avoid double subscription + usage.
+                                        </li>
+                                        <li><strong>Use Composer sparingly</strong> for huge edits; small, focused edits
+                                            cost less than full-file rewrites.</li>
+                                        <li><strong>Cache</strong>: same files get cache reads (cheaper); avoid jumping
+                                            between many unrelated repos in one session.</li>
+                                    </ul>
+                                </details>
+                            </section>
+                            <!-- Subscriptions (fixed monthly: Cursor, Claude, ChatGPT) -->
+                            <section class="mb-10">
+                                <h2
+                                    class="text-sm font-semibold text-primary uppercase tracking-wider mb-4 flex items-center gap-2">
+                                    <i data-lucide="credit-card" class="w-4 h-4"></i> Subscriptions & recurring
+                                </h2>
+                                <p class="text-[11px] text-muted mb-4">Track fixed monthly costs. Add entries with
+                                    category <strong>AI Subscriptions</strong>; use description for account (e.g. Cursor
+                                    inneranimalclothing, Claude, ChatGPT Pro).</p>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                                    <div class="bg-panel border border-primary/30 rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-primary mb-1">Cursor Pro</div>
+                                        <div class="text-sm font-semibold">meauxbility@gmail.com</div>
+                                        <div class="text-[11px] text-muted">Usage above from CSV</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Cursor Pro</div>
+                                        <div class="text-sm font-semibold">inneranimalclothing@gmail.com</div>
+                                        <div class="text-[11px] text-muted">Add CSV when available</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">Claude</div>
+                                        <div class="text-sm font-semibold">2 accounts</div>
+                                        <div class="text-[11px] text-muted">Add monthly when known</div>
+                                    </div>
+                                    <div class="bg-panel border border-border rounded-xl p-4">
+                                        <div class="text-[10px] font-bold uppercase text-muted mb-1">ChatGPT Pro</div>
+                                        <div class="text-sm font-semibold">~$22/mo</div>
+                                        <div class="text-[11px] text-muted">Add as finance entry</div>
+                                    </div>
+                                </div>
+                                <p class="text-[11px] text-muted">Use <strong>Finance → Add finance entry</strong> with
+                                    category <strong>AI Subscriptions</strong> and description e.g. &quot;ChatGPT
+                                    Pro&quot;, &quot;Claude Pro account 1&quot;.</p>
+                            </section>
+                        </div>
+                    </div>
+                    <!-- Gallery page (Cloudflare Images + R2) -->
+                    <div id="view-gallery" class="page-view hidden flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-6xl">
+                            <h1 id="gallery-page-title" class="text-xl font-bold mb-2">MeauxMedia</h1>
+                            <p class="text-sm text-muted mb-6">CRUD content gallery &amp; CMS. Cloudflare Images + R2 —
+                                preview, upload, delete. See what’s on live sites vs trash/duplicates.</p>
+                            <div class="flex gap-2 mb-4">
+                                <button type="button" onclick="ide.galleryTab('cf')" id="gallery-tab-cf"
+                                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-black">Cloudflare
+                                    Images</button>
+                                <button type="button" onclick="ide.galleryTab('r2')" id="gallery-tab-r2"
+                                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-elevated border border-border text-muted hover:border-primary/50">R2
+                                    bucket</button>
+                            </div>
+                            <!-- Cloudflare Images -->
+                            <section id="gallery-cf" class="gallery-section">
+                                <div class="flex flex-wrap gap-2 items-center mb-4">
+                                    <input type="url" id="gallery-cf-upload-url" placeholder="Upload from URL"
+                                        class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-64">
+                                    <button type="button" onclick="ide.uploadCfImageUrl()"
+                                        class="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-black">Upload
+                                        URL</button>
+                                    <input type="file" id="gallery-cf-upload-file" accept="image/*"
+                                        class="text-sm file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border file:border-border file:bg-elevated">
+                                    <button type="button" onclick="ide.uploadCfImageFile()"
+                                        class="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-black">Upload
+                                        file</button>
+                                </div>
+                                <div class="flex flex-wrap gap-2 items-center mb-3">
+                                    <button type="button" onclick="ide.loadCfImages(ide._galleryCfPage - 1)"
+                                        id="gallery-cf-prev"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium bg-elevated border border-border"
+                                        disabled>Prev</button>
+                                    <span id="gallery-cf-page-info" class="text-xs text-muted">Page 1</span>
+                                    <button type="button" onclick="ide.loadCfImages(ide._galleryCfPage + 1)"
+                                        id="gallery-cf-next"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium bg-elevated border border-border">Next</button>
+                                </div>
+                                <div id="gallery-cf-grid"
+                                    class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-6">
+                                    <div class="col-span-full text-sm text-muted">Loading Cloudflare Images…</div>
+                                </div>
+                            </section>
+                            <!-- R2 -->
+                            <section id="gallery-r2" class="gallery-section hidden">
+                                <div class="flex flex-wrap gap-2 items-center mb-4">
+                                    <input type="text" id="gallery-r2-prefix" placeholder="Prefix filter (optional)"
+                                        class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-48">
+                                    <input type="file" id="gallery-r2-upload-file" accept="image/*"
+                                        class="text-sm file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border file:border-border file:bg-elevated">
+                                    <input type="text" id="gallery-r2-upload-key"
+                                        placeholder="R2 key (e.g. images/photo.jpg)"
+                                        class="bg-elevated border border-border rounded-lg px-3 py-2 text-sm w-48">
+                                    <button type="button" onclick="ide.uploadR2File()"
+                                        class="px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-black">Upload
+                                        to R2</button>
+                                </div>
+                                <div class="flex flex-wrap gap-2 items-center mb-3">
+                                    <button type="button" onclick="ide.loadR2Images(null)" id="gallery-r2-prev"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium bg-elevated border border-border">Refresh</button>
+                                    <span id="gallery-r2-info" class="text-xs text-muted"></span>
+                                    <button type="button" onclick="ide.loadR2Images(ide._galleryR2Cursor)"
+                                        id="gallery-r2-next"
+                                        class="px-3 py-2 rounded-lg text-xs font-medium bg-elevated border border-border hidden">Next</button>
+                                </div>
+                                <div id="gallery-r2-grid"
+                                    class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-6">
+                                    <div class="col-span-full text-sm text-muted">Loading R2…</div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                    <!-- MeauxSQL page (D1/SQLite AI) -->
+                    <div id="view-meauxsql" class="page-view hidden flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-4xl">
+                            <h1 class="text-xl font-bold mb-2">MeauxSQL</h1>
+                            <p class="text-sm text-muted mb-6">D1 · SQLite · AI read/write. Ask agent_sam to query,
+                                insert, or update D1 data.</p>
+                            <div class="p-6 bg-panel border border-border rounded-xl mb-6">
+                                <p class="text-sm text-muted mb-4">Use the agent_sam drawer (?) or open from <a
+                                        href="/dashboard/tools" onclick="ide.navTo('tools'); return false;"
+                                        class="text-primary font-medium hover:underline">Tools</a> to run D1/SQL
+                                    commands.</p>
+                                <a href="/dashboard/meauxide"
+                                    onclick="ide.navTo('workspace'); ide.openAgentWithMeauxSQLPrompt(); return false;"
+                                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black font-semibold text-sm hover:opacity-90">Open
+                                    agent_sam with MeauxSQL prompt →</a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Tools page (MeauxSQL, D1/SQLite AI) -->
+                    <div id="view-tools" class="page-view hidden flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-4xl">
+                            <h1 class="text-xl font-bold mb-2">Tools</h1>
+                            <p class="text-sm text-muted mb-6">AI-friendly D1/SQLite and platform tools. Your agent can
+                                read/write D1 data here.</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <a href="/dashboard/meauxide"
+                                    onclick="ide.navTo('workspace'); ide.openAgentWithMeauxSQLPrompt(); return false;"
+                                    class="group block bg-panel border border-border rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg p-6">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/cb9e7c10-684c-46f1-4d57-c7bbfe9feb00/avatar"
+                                            alt="MeauxSQL" class="w-14 h-14 rounded-xl object-cover">
+                                        <div>
+                                            <div class="font-bold text-primary group-hover:underline">MeauxSQL</div>
+                                            <div class="text-xs text-muted">D1 · SQLite · DO</div>
+                                        </div>
+                                    </div>
+                                    <p class="text-sm text-muted mb-4">User-friendly AI-advanced D1/SQLite. Ask
+                                        agent_sam to query, insert, or update D1 data — valid read/write for your AI
+                                        agent.</p>
+                                    <span class="text-xs font-semibold text-primary">Open agent_sam to run D1/SQL
+                                        →</span>
+                                </a>
+                                <a href="/dashboard/meauxmedia" onclick="ide.navTo('meauxmedia'); return false;"
+                                    class="group block bg-panel border border-border rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg p-6">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <img id="tool-meauxmedia-icon"
+                                            src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/a09c7e5b-074d-415b-e77d-40b1256cf400/avatar"
+                                            alt="MeauxMedia" class="w-14 h-14 rounded-xl object-cover">
+                                        <div>
+                                            <div class="font-bold text-primary group-hover:underline">MeauxMedia</div>
+                                            <div class="text-xs text-muted">Full CRUD image library</div>
+                                        </div>
+                                    </div>
+                                    <p class="text-sm text-muted mb-4">Cloudflare Images + R2 — upload, preview, delete.
+                                        Add your tool app icon in Settings.</p>
+                                    <span class="text-xs font-semibold text-primary">Open MeauxMedia →</span>
+                                </a>
+                                <a href="/dashboard/meauxide" onclick="ide.navTo('workspace'); return false;"
+                                    class="group block bg-panel border border-primary/40 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg p-6">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div
+                                            class="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center">
+                                            <i data-lucide="git-branch" class="w-7 h-7 text-primary"></i>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold text-primary group-hover:underline">R2 CI/CD</div>
+                                            <div class="text-xs text-muted">R2-based versioning · no GitHub required
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p class="text-sm text-muted mb-4">Deploy and version from R2. Most capable
+                                        Cloudflare building platform; GitHub optional for users later.</p>
+                                    <span class="text-xs font-semibold text-primary">Workspace →</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Library page (D1-backed) -->
+                    <div id="view-library" class="page-view hidden flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-4xl">
+                            <h1 class="text-xl font-bold mb-6">Library</h1>
+                            <div id="library-list" class="bg-panel border border-border rounded-xl overflow-hidden">
+                                <div class="p-4 text-sm text-muted">Loading from D1...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Workspaces page (MCP / project isolation) -->
+                    <div id="view-workspaces" class="page-view hidden flex-1 min-h-0 overflow-auto p-6">
+                        <div class="max-w-4xl">
+                            <h1 class="text-xl font-bold mb-2">Workspaces</h1>
+                            <p class="text-sm text-muted mb-6">Isolated MCP environments. No cross-workspace data or
+                                workflows.</p>
+                            <div id="workspaces-list" class="space-y-3">
+                                <div
+                                    class="workspace-card p-4 rounded-xl border-2 border-primary bg-primary/5 flex items-center justify-between flex-wrap gap-2">
+                                    <div class="flex items-center gap-3">
+                                        <i data-lucide="box" class="w-5 h-5 text-primary"></i>
+                                        <div>
+                                            <span class="font-semibold text-primary">inneranimalmedia-main</span>
+                                            <span
+                                                class="ml-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-primary/20 text-primary">Current</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-[10px] text-muted">Theme:</label>
+                                        <select id="workspace-theme-inneranimalmedia-main"
+                                            onchange="ide.setWorkspaceTheme('inneranimalmedia-main', this.value)"
+                                            class="bg-elevated border border-border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer">
+                                            <option value="inner-animal-dark">IA Dark</option>
+                                            <option value="inner-animal-wild">IA Wild</option>
+                                            <option value="inner-animal-ocean">IA Ocean</option>
+                                            <option value="tactical-sandstone">Sandstone</option>
+                                            <option value="meaux-workflow">Workflow</option>
+                                            <option value="meaux-clay-dark">Clay Dark</option>
+                                        </select>
+                                    </div>
+                                    <span class="text-[10px] text-muted font-mono w-full sm:w-auto">D1 · R2 · Workers
+                                        AI</span>
+                                </div>
+                                <div
+                                    class="workspace-card p-4 rounded-xl border border-border bg-panel hover:border-primary/50 transition-colors flex items-center justify-between flex-wrap gap-2">
+                                    <div class="flex items-center gap-3">
+                                        <i data-lucide="folder" class="w-5 h-5 text-muted"></i>
+                                        <span class="font-medium">meauxide-default</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-[10px] text-muted">Theme:</label>
+                                        <select id="workspace-theme-meauxide-default"
+                                            onchange="ide.setWorkspaceTheme('meauxide-default', this.value)"
+                                            class="bg-elevated border border-border rounded-lg text-[10px] px-2 py-1 outline-none cursor-pointer">
+                                            <option value="inner-animal-dark">IA Dark</option>
+                                            <option value="inner-animal-ocean">IA Ocean</option>
+                                            <option value="meaux-workflow">Workflow</option>
+                                        </select>
+                                    </div>
+                                    <span class="text-[10px] text-muted">Switch</span>
+                                </div>
+                            </div>
+                            <p class="mt-6 text-[11px] text-muted border border-border rounded-lg p-4 bg-panel">Each
+                                workspace uses its own D1 database, R2 bucket, and MCP bindings. Set a theme per
+                                workspace to quickly identify which project you're in. GitHub optional; R2-based
+                                versioning available.</p>
+                        </div>
+                    </div>
+                    <!-- Workspace page (editor + terminal + agent_sam) -->
+                    <div id="view-workspace" class="page-view hidden flex-1 flex min-h-0 overflow-hidden">
+                        <div id="explorer-panel"
+                            class="panel flex flex-col border-r border-border bg-panel/30 backdrop-blur-md flex-shrink-0"
+                            style="width: 240px;">
+                            <div class="h-10 px-3 border-b border-border flex items-center"><span
+                                    class="text-xs font-medium text-muted">Workspace</span></div>
+                            <div class="flex-1 overflow-y-auto p-3 custom-scrollbar" id="fileTreeContainer">
+                                <div class="space-y-2">
+                                    <div class="text-[10px] font-medium text-muted px-1">Active</div>
+                                    <div
+                                        class="flex items-center gap-2 px-2 py-1.5 bg-primary/5 border border-primary/20 rounded-lg">
+                                        <i data-lucide="box" class="w-3.5 h-3.5 text-primary"></i>
+                                        <span
+                                            class="text-xs font-medium truncate text-primary">inneranimalmedia-main</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="resizer" data-resizer="explorer"></div>
+                        <div class="flex-1 flex flex-col overflow-hidden bg-surface min-w-0">
+                            <div class="h-10 flex items-center bg-panel/50 border-b border-border px-4 gap-1">
+                                <div
+                                    class="px-4 h-full flex items-center gap-3 bg-surface border-x border-border border-t-2 border-t-primary text-[11px] font-bold">
+                                    <i data-lucide="file-code" class="w-4 h-4 text-primary"></i>
+                                    <span class="font-mono">index.js</span>
+                                </div>
+                            </div>
+                            <div class="flex-1 overflow-hidden relative group">
+                                <textarea id="editor"
+                                    class="w-full h-full bg-[#0d0d0d] text-[#d4d4d4] font-mono text-[13px] p-10 outline-none leading-relaxed resize-none custom-scrollbar"
+                                    spellcheck="false"></textarea>
+                            </div>
+                            <div id="terminal-container" class="h-48 border-t border-border bg-[#050505] flex flex-col">
+                                <div
+                                    class="h-8 flex items-center justify-between px-4 bg-[#0a0a0a] border-b border-white/5">
+                                    <span class="text-[10px] font-black text-white/50 uppercase">System.IO</span>
+                                    <button onclick="ide.clearTerminal()"
+                                        class="text-[10px] font-bold text-white/20 hover:text-white/60"><i
+                                            data-lucide="trash-2" class="w-3 h-3 inline"></i> PURGE</button>
+                                </div>
+                                <div id="terminal-output"
+                                    class="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-white/70 custom-scrollbar">
+                                    <div class="text-primary/60 font-bold mb-2 flex items-center gap-2"><i
+                                            data-lucide="terminal" class="w-3 h-3"></i> MEAUXOS.KERNEL V4.0.2</div>
+                                    <div class="flex gap-2"><span class="text-white/20">[--]</span><span
+                                            class="text-success/80">Ready</span></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="assistant-panel"
+                            class="w-[280px] md:w-[320px] bg-panel/50 border-l border-border flex flex-col flex-shrink-0 shadow-xl backdrop-blur-xl">
+                            <div class="h-10 border-b border-border flex items-center justify-between px-4 bg-panel">
+                                <span class="text-xs font-semibold text-primary">agent_sam</span>
+                                <button type="button" onclick="ide.toggleAgentSamDrawer()"
+                                    class="min-w-[44px] min-h-[44px] flex items-center justify-center -m-2 rounded-lg hover:bg-surface text-muted hover:text-primary touch-manipulation"
+                                    aria-label="Open agent_sam">?</button>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-center p-4 text-center">
+                                <p class="text-sm text-muted mb-4">Chat with agent_sam in the drawer.</p>
+                                <button type="button" onclick="ide.toggleAgentSamDrawer()"
+                                    class="min-h-[44px] px-6 rounded-xl bg-primary text-black font-semibold text-sm hover:opacity-90 transition-opacity touch-manipulation">Open
+                                    agent_sam</button>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <footer
+                    class="h-6 bg-panel border-t border-border flex items-center justify-between px-4 text-[10px] text-muted flex-shrink-0">
+                    <span class="flex items-center gap-1.5 text-success"><i data-lucide="activity" class="w-3 h-3"></i>
+                        Ready</span>
+                    <span class="font-mono opacity-70">MeauxIDE</span>
+                </footer>
+            </div>
+        </div>
+    </div><!-- /app-dashboard -->
+
+    <!-- App deck: 3 tools quick-access; swipe away or turn off in Settings -->
+    <div id="app-deck"
+        class="hidden fixed bottom-20 left-4 right-4 md:left-auto md:right-24 md:w-72 z-[9996] flex flex-col gap-2 p-3 bg-panel/95 border border-border rounded-2xl shadow-2xl backdrop-blur-sm transition-transform duration-300">
+        <div class="flex items-center justify-between flex-shrink-0">
+            <span class="text-[10px] font-bold uppercase text-muted">Quick tools</span>
+            <button type="button" onclick="ide.dismissAppDeck()"
+                class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-surface text-muted"
+                aria-label="Dismiss">×</button>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+            <a href="/dashboard/meauxmedia" onclick="ide.navTo('meauxmedia'); ide.dismissAppDeck(); return false;"
+                class="flex flex-col items-center p-3 rounded-xl bg-elevated border border-border hover:border-primary/50 transition-colors">
+                <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/a09c7e5b-074d-415b-e77d-40b1256cf400/avatar"
+                    alt="" class="w-10 h-10 rounded-xl object-cover mb-1">
+                <span class="text-[10px] font-medium truncate w-full text-center">MeauxMedia</span>
+            </a>
+            <a href="/dashboard/meauxsql" onclick="ide.navTo('meauxsql'); ide.dismissAppDeck(); return false;"
+                class="flex flex-col items-center p-3 rounded-xl bg-elevated border border-border hover:border-primary/50 transition-colors">
+                <i data-lucide="database" class="w-10 h-10 text-primary mb-1"></i>
+                <span class="text-[10px] font-medium truncate w-full text-center">MeauxSQL</span>
+            </a>
+            <button type="button" onclick="ide.toggleAgentSamDrawer(); ide.dismissAppDeck();"
+                class="flex flex-col items-center p-3 rounded-xl bg-elevated border border-border hover:border-primary/50 transition-colors">
+                <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/b5557284-485e-4305-2c5a-49c6acf99a00/thumbnail"
+                    alt="Agent_Sam" class="w-10 h-10 rounded-xl object-cover mb-1">
+                <span class="text-[10px] font-medium truncate w-full text-center">Agent_Sam</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sitewide agent_sam: branded FAB + agent picker (+) + slide-out drawer (hidden on landing) -->
+    <div id="agent-fab-container" class="hidden fixed bottom-6 right-6 z-[9998] flex items-end gap-2">
+        <div id="agent-picker-dropdown"
+            class="hidden absolute bottom-full right-0 mb-2 bg-panel border border-border rounded-xl shadow-2xl overflow-hidden min-w-[200px]">
+            <div class="px-3 py-2 border-b border-border text-[10px] font-bold uppercase text-muted">Agents</div>
+            <button type="button"
+                onclick="ide.setActiveAgent('agent_sam'); ide.toggleAgentPicker(false); ide.toggleAgentSamDrawer();"
+                class="w-full flex items-center gap-2 px-4 py-3 hover:bg-surface text-left text-sm font-medium">
+                <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/b5557284-485e-4305-2c5a-49c6acf99a00/thumbnail"
+                    alt="" class="w-8 h-8 rounded-lg object-cover">
+                Agent_Sam
+            </button>
+            <div class="px-3 py-2 border-b border-border text-[10px] font-bold uppercase text-muted">Mode</div>
+            <button type="button" onclick="ide.setAgentMode('plan'); ide.toggleAgentPicker(false);"
+                class="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface text-left text-xs">Plan — plan &
+                strategize</button>
+            <button type="button" onclick="ide.setAgentMode('agent'); ide.toggleAgentPicker(false);"
+                class="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface text-left text-xs">Agent —
+                execute</button>
+            <button type="button" onclick="ide.setAgentMode('guide'); ide.toggleAgentPicker(false);"
+                class="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface text-left text-xs">Guide — guide
+                others</button>
+        </div>
+        <button id="agent-sam-add-btn" type="button" onclick="ide.toggleAgentPicker()" aria-label="Choose agent"
+            class="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-elevated border border-border flex items-center justify-center text-xl font-bold text-muted hover:bg-surface hover:text-primary transition-all touch-manipulation">+</button>
+        <button id="agent-sam-fab" type="button" onclick="ide.toggleAgentSamDrawer()"
+            class="w-14 h-14 min-w-[56px] min-h-[56px] rounded-2xl bg-panel border-2 border-border shadow-xl flex items-center justify-center overflow-hidden hover:border-primary/50 active:scale-95 transition-all touch-manipulation focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+            aria-label="Open agent_sam">
+            <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/b5557284-485e-4305-2c5a-49c6acf99a00/thumbnail"
+                alt="Agent_Sam" class="w-full h-full object-cover">
+        </button>
+    </div>
+    <div id="agent-sam-drawer"
+        class="agent-sam-drawer fixed top-0 right-0 bottom-0 z-[9999] w-full max-w-[380px] bg-panel border-l border-border shadow-2xl flex flex-col transition-transform duration-300 ease-out translate-x-full touch-manipulation"
+        data-swipe-start-x="">
+        <div class="h-12 border-b border-border flex items-center justify-between px-4 bg-panel flex-shrink-0">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+                <img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/b5557284-485e-4305-2c5a-49c6acf99a00/thumbnail"
+                    alt="" class="w-8 h-8 rounded-lg object-cover flex-shrink-0">
+                <span class="text-sm font-bold text-primary truncate">Agent_Sam</span>
+                <select id="agent-drawer-project" onchange="ide.saveAgentProjectContext()"
+                    class="ml-2 flex-1 min-w-0 max-w-[120px] text-xs bg-surface border border-border rounded-lg px-2 py-1 outline-none focus:border-primary"
+                    title="Project context">
+                    <option value="">No project</option>
+                </select>
+            </div>
+            <button type="button" onclick="ide.toggleAgentSamDrawer()"
+                class="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-surface text-muted hover:text-primary touch-manipulation"
+                aria-label="Close">×</button>
+        </div>
+        <div class="px-3 py-2 border-b border-border flex gap-1 flex-shrink-0 bg-panel/80">
+            <button type="button" id="agent-mode-plan" onclick="ide.setAgentMode('plan')"
+                class="flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase bg-elevated border border-border text-muted hover:border-primary/50 hover:text-primary transition-colors">Plan</button>
+            <button type="button" id="agent-mode-agent" onclick="ide.setAgentMode('agent')"
+                class="flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase bg-primary/20 border border-primary text-primary">Agent</button>
+            <button type="button" id="agent-mode-guide" onclick="ide.setAgentMode('guide')"
+                class="flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase bg-elevated border border-border text-muted hover:border-primary/50 hover:text-primary transition-colors">Guide</button>
+        </div>
+        <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0"></div>
+        <div class="p-4 border-t border-border bg-panel/80 flex-shrink-0">
+            <div
+                class="relative bg-surface border border-border rounded-xl p-1 focus-within:border-primary transition-all">
+                <textarea id="assistant-input" rows="1"
+                    class="w-full bg-transparent px-3 py-2 text-sm outline-none resize-none max-h-24 font-medium placeholder:text-muted min-h-[44px]"
+                    placeholder="Orchestrate next stage..."></textarea>
+                <div class="flex justify-end pt-1">
+                    <button type="button" onclick="ide.sendChatMessage()"
+                        class="min-h-[44px] px-4 bg-primary text-black rounded-lg text-[10px] font-bold uppercase hover:opacity-90 touch-manipulation">Dispatch</button>
+                </div>
+            </div>
+            <p class="text-center text-[10px] text-muted mt-2 opacity-50">MeauxIDE · agent_sam</p>
+        </div>
+    </div>
+    <div id="agent-sam-drawer-backdrop"
+        class="fixed inset-0 bg-black/40 z-[9997] opacity-0 pointer-events-none transition-opacity duration-300"
+        onclick="ide.toggleAgentSamDrawer()" aria-hidden="true"></div>
+
+    <!-- Settings UI (Tactical Modal) -->
+    <div id="settings-modal"
+        class="hidden fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-md">
+        <div
+            class="bg-panel border border-border rounded-[2.5rem] w-full max-w-2xl shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div class="p-8 border-b border-border flex items-center justify-between">
+                <div>
+                    <h3 class="font-black text-2xl tracking-tighter uppercase">System Config</h3>
+                    <p class="text-muted text-[10px] font-bold uppercase mt-1 tracking-widest">Authorized Access Only
+                    </p>
+                </div>
+                <button onclick="ide.closeSettings()"
+                    class="w-12 h-12 flex items-center justify-center border border-border hover:bg-surface rounded-2xl transition-all shadow-lg"><i
+                        data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="p-10 space-y-8">
+                <div>
+                    <label class="block mb-3">
+                        <span class="text-[10px] font-black uppercase text-muted tracking-widest mb-3 block">Profile
+                            picture URL</span>
+                        <input type="url" id="profile-image-url"
+                            class="w-full bg-surface border border-border p-4 rounded-2xl outline-none focus:border-primary transition-all text-sm shadow-inner"
+                            placeholder="https://... (default: avatar)">
+                    </label>
+                    <label class="block mb-3">
+                        <span class="text-[10px] font-black uppercase text-muted tracking-widest mb-3 block">MeauxMedia
+                            tool icon URL</span>
+                        <input type="url" id="tool-meauxmedia-icon-url"
+                            class="w-full bg-surface border border-border p-4 rounded-2xl outline-none focus:border-primary transition-all text-sm shadow-inner"
+                            placeholder="https://imagedelivery.net/.../avatar (Tools card icon)">
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" id="settings-app-deck-off"
+                            class="w-5 h-5 rounded border-border bg-surface text-primary focus:ring-primary">
+                        <span class="text-[10px] font-black uppercase text-muted tracking-widest">Turn off app deck
+                            (quick tools) completely</span>
+                    </label>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="space-y-6">
+                        <label class="block">
+                            <span class="text-[10px] font-black uppercase text-muted tracking-widest mb-3 block">OpenAI
+                                Vector Core</span>
+                            <input type="password" id="openai-key"
+                                class="w-full bg-surface border border-border p-4 rounded-2xl outline-none focus:border-primary transition-all text-sm font-mono shadow-inner"
+                                placeholder="SK-PROJ-...">
+                        </label>
+                        <label class="block">
+                            <span
+                                class="text-[10px] font-black uppercase text-muted tracking-widest mb-3 block">Infrastructure
+                                Token (CF)</span>
+                            <input type="password" id="cf-token"
+                                class="w-full bg-surface border border-border p-4 rounded-2xl outline-none focus:border-primary transition-all text-sm font-mono shadow-inner"
+                                placeholder="Q4R-LZOB...">
+                        </label>
+                    </div>
+                    <div class="space-y-6">
+                        <label class="block">
+                            <span class="text-[10px] font-black uppercase text-muted tracking-widest mb-3 block">Cursor
+                                Enterprise Bridge</span>
+                            <input type="password" id="cursor-key"
+                                class="w-full bg-surface border border-border p-4 rounded-2xl outline-none focus:border-primary transition-all text-sm font-mono shadow-inner"
+                                placeholder="BRIDGE_...">
+                        </label>
+                        <div class="p-6 bg-primary/5 border border-primary/20 rounded-2xl flex gap-4">
+                            <i data-lucide="info" class="w-8 h-8 text-primary mt-1"></i>
+                            <div>
+                                <span
+                                    class="block text-[11px] font-black uppercase text-primary tracking-widest leading-none mb-2">Notice</span>
+                                <p class="text-[10px] text-muted font-medium leading-relaxed">Keys are encrypted at the
+                                    edge and never stored in plain text. Multi-tenancy isolation active.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="border-t border-border pt-8">
+                    <h4 class="text-[10px] font-black uppercase text-muted tracking-widest mb-3">Social & connections
+                    </h4>
+                    <p class="text-xs text-muted mb-4">Connect accounts to unify your dashboard. OAuth: add app
+                        credentials in env or use each platform’s developer console.</p>
+                    <div class="flex flex-wrap gap-3">
+                        <a href="https://developers.facebook.com/docs/facebook-login" target="_blank" rel="noopener"
+                            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border hover:border-primary/50 text-sm font-medium transition-colors">Facebook</a>
+                        <a href="https://developers.facebook.com/docs/instagram-basic-display-api" target="_blank"
+                            rel="noopener"
+                            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border hover:border-primary/50 text-sm font-medium transition-colors">Instagram</a>
+                        <a href="https://developer.twitter.com/en/docs/authentication" target="_blank" rel="noopener"
+                            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border hover:border-primary/50 text-sm font-medium transition-colors">X
+                            / Twitter</a>
+                        <a href="https://developers.linkedin.com/docs/oauth" target="_blank" rel="noopener"
+                            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-elevated border border-border hover:border-primary/50 text-sm font-medium transition-colors">LinkedIn</a>
+                    </div>
+                    <p class="text-[10px] text-muted mt-3">Easiest path: use Zapier/Make (Integromat) or IFTTT to sync
+                        posts; or add OAuth client IDs in a backend and wire Connect buttons here.</p>
+                </div>
+            </div>
+            <div class="p-8 bg-surface border-t border-border flex justify-end gap-4">
+                <button onclick="ide.closeSettings()"
+                    class="px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest bg-panel border border-border hover:bg-elevated transition-all">Abort</button>
+                <button onclick="ide.saveSettings()"
+                    class="px-10 py-3 rounded-2xl font-black text-xs uppercase tracking-widest bg-primary text-black shadow-xl hover:scale-105 active:scale-95 transition-all">Commit
+                    Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: var(--color-border);
+            border-radius: 10px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: var(--color-primary);
+        }
+
+        .sidebar-icon {
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 14px;
+            color: var(--color-muted);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            border: 1px solid transparent;
+        }
+
+        .sidebar-icon:hover {
+            background: var(--bg-surface);
+            color: var(--color-text);
+            border-color: var(--color-border);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar-icon.active {
+            background: var(--bg-surface);
+            color: var(--color-primary);
+            box-shadow: 0 0 20px rgba(var(--color-primary), 0.1);
+            border-color: var(--color-border);
+        }
+
+        .sidebar-icon.active::after {
+            content: "";
+            position: absolute;
+            left: -22px;
+            width: 4px;
+            height: 24px;
+            background: var(--color-primary);
+            border-radius: 0 10px 10px 0;
+            box-shadow: 0 0 15px var(--color-primary);
+        }
+
+        .resizer {
+            width: 1px;
+            height: 100%;
+            background: var(--color-border);
+            cursor: col-resize;
+            transition: all 0.2s;
+            position: relative;
+            z-index: 10;
+        }
+
+        .resizer:hover,
+        .resizing {
+            width: 3px;
+            background: var(--color-primary);
+            box-shadow: 0 0 10px var(--color-primary);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(40px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .slide-in {
+            animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .msg-bot-content {
+            background: var(--bg-panel);
+            border: 1px solid var(--color-border);
+        }
+
+        .msg-user-content {
+            background: var(--color-primary);
+            color: #000;
+            font-weight: 600;
+        }
+
+        .nav-link.active {
+            background: var(--bg-surface);
+            color: var(--color-primary);
+            border: 1px solid var(--color-border);
+        }
+
+        .page-view.hidden {
+            display: none !important;
+        }
+
+        .agent-sam-drawer.open {
+            transform: translateX(0);
+        }
+
+        #agent-sam-drawer-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #agent-sam-fab.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.8);
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        @media (min-width: 768px) {
+            .sidebar.docked-closed {
+                transform: translateX(-100%);
+                width: 0;
+                min-width: 0;
+                overflow: hidden;
+                opacity: 0;
+                pointer-events: none;
+            }
+        }
+    </style>
+
+    <script nonce="MTY0OTgxNjc4OSwzMzc4NjMyOTE0">
+        function escapeHtml(s) {
+            if (s == null) return '';
+            const div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
+        /**
+         * MEAUXIDE V4 - TACTICAL CORE ENGINE
+         * Optimized for Infrastructure Control & Orchestration
+         * Navigation: single path→page map so /dashboard, /dashboard/projects, etc. stay in sync (Worker serves index.html for these).
+         */
+        function getDashboardPageFromPath(pathname) {
+            var raw = (pathname || '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+            var p = raw.startsWith('/') ? raw : '/' + raw;
+            if (p !== '/dashboard' && p.indexOf('/dashboard/') !== 0) return null;
+            var segment = p === '/dashboard' ? 'dashboard' : p.replace(/^\/dashboard\/?/, '').split('/')[0] || 'dashboard';
+            return segment;
+        }
+        function getViewAndNavIdsForPage(page) {
+            var viewPage = (page === 'meauxmedia') ? 'gallery' : (page === 'meauxide' ? 'workspace' : page);
+            var navPage = (page === 'meauxide') ? 'workspace' : (page === 'workspaces' ? 'workspaces' : page);
+            return { viewId: 'view-' + viewPage, navId: 'nav-' + navPage };
+        }
+        class MeauxIDE {
+            constructor() {
+                this.state = { config: this.loadConfig(), files: { 'index.js': '// Production Kernel Core v4.0' } };
+                this.projectsD1Map = {};
+                this._galleryCfPage = 1;
+                this._galleryR2Cursor = null;
+                this._galleryActiveTab = 'cf';
+                this.PROJECTS_STATIC = [
+                    { name: 'AnythingFloorsAndMore.com', slug: 'anythingfloorsandmore', desc: 'Client: Dylan Hollier', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/876f8613-b8b4-4733-963b-f778c741a000/medium', link: 'https://anythingfloorsandmore.com' },
+                    { name: 'shinshusolutions.com', slug: 'shinshu-solutions', desc: 'Shinshu Solutions', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/59689571-cbfd-4f02-7122-c0f41e689200/medium', link: 'https://shinshusolutions.com' },
+                    { name: 'pelicanpeptides.com', slug: 'pelican-peptides', desc: 'Pelican Peptides', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/485afc54-84dc-4bf6-c74c-d6ff940f3a00/medium', link: 'https://pelicanpeptides.com' },
+                    { name: 'MeauxCad', slug: 'meauxcad', desc: '3D AI · Meshy/AI 2D/3D creating platform', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/2a047804-2626-4529-4324-f5a800f48500/medium', link: '' },
+                    { name: 'MeauxGames', slug: 'meauxgames', desc: 'Chess game — in progress', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/17381bd3-ef22-4668-dd97-78fa7211b700/medium', link: '' },
+                    { name: 'MeauxOS', slug: 'meauxos', desc: 'MeauxOS', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/06ad0642-3a80-4271-b785-5e1800e43a00/medium', link: '' },
+                    { name: 'MeauxCloud', slug: 'meauxcloud', desc: 'MeauxCLOUD', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/06ad0642-3a80-4271-b785-5e1800e43a00/medium', link: '' },
+                    { name: 'newiberiachurchofchrist.com', slug: 'new-iberia-church', desc: 'New Iberia Church of Christ', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/4f32f980-156e-4eeb-1b33-145d5da1a800/small', link: 'https://newiberiachurchofchrist.com' },
+                    { name: 'InnerAnimal', slug: 'inner-animal', desc: 'Inner Animal', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/17535395-1501-490a-ff3d-e43d7c16a000/medium', link: '' },
+                    { name: 'InnerAutodidact.com', slug: 'inner-autodidact', desc: 'Schooling platform / community build', icon: 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/611ea0dd-fcae-4997-8a4f-1d4a69fa9d00/small', link: 'https://innerautodidact.com' }
+                ];
+                this.init();
+            }
+            loadConfig() {
+                return {
+                    openaiKey: localStorage.getItem('meaux_openai') || '',
+                    cursorKey: localStorage.getItem('meaux_cursor') || '',
+                    cfToken: localStorage.getItem('meaux_cf_token') || ''
+                };
+            }
+            init() {
+                this.applyRouteFromPath(window.location.pathname || '/');
+                this.applySavedTheme();
+                this.applyProfileImage();
+                this.applyToolIcons();
+                this.applySidebarDockState();
+                this.applyAgentModeState();
+                this.setupDrawerSwipe();
+                this.setupAppDeckSwipe();
+                this.setupEditor();
+                this.setupInteractions();
+                this.setupPublicAuth();
+                this.refreshD1Status();
+                this.applyAppDeckState();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                this.appendMessage('bot', 'agent_sam (MeauxIDE) is online. Ask for stats, projects, D1/SQL, volunteers, campaigns, R2 storage, or Supabase — or ask anything else.');
+                console.log('MeauxIDE Active');
+            }
+            setupPublicAuth() {
+                const self = this;
+                const openSignin = function (e) { if (e) e.preventDefault(); self.openAuthModal(); };
+                const openSignup = function (e) { if (e) e.preventDefault(); const t = document.getElementById('auth-modal-title'); if (t) t.textContent = 'Sign up'; self.openAuthModal(); };
+                const signin = document.getElementById('home-signin-btn');
+                const signup = document.getElementById('home-signup-btn');
+                const heroSignin = document.getElementById('hero-signin-btn');
+                const heroSignup = document.getElementById('hero-signup-btn');
+                const closeBtn = document.getElementById('auth-modal-close');
+                const modal = document.getElementById('auth-modal');
+                const form = document.getElementById('login-form');
+                if (signin) { signin.addEventListener('click', openSignin); signin.onclick = openSignin; }
+                if (signup) { signup.addEventListener('click', openSignup); signup.onclick = openSignup; }
+                if (heroSignin) { heroSignin.addEventListener('click', openSignin); heroSignin.onclick = openSignin; }
+                if (heroSignup) { heroSignup.addEventListener('click', openSignup); heroSignup.onclick = openSignup; }
+                if (closeBtn) { closeBtn.addEventListener('click', function () { self.closeAuthModal(); }); closeBtn.onclick = function () { self.closeAuthModal(); }; }
+                if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) self.closeAuthModal(); });
+                if (form) { form.addEventListener('submit', function (e) { e.preventDefault(); self.handleLogin(e); return false; }); form.onsubmit = function (e) { e.preventDefault(); self.handleLogin(e); return false; }; }
+            }
+            applySavedTheme() {
+                const saved = localStorage.getItem('meaux_theme') || 'tactical-sandstone';
+                document.body.setAttribute('data-theme', saved);
+                const sel = document.getElementById('themeSelect');
+                if (sel) { sel.value = saved; if (!sel.querySelector('option[value="' + saved + '"]')) sel.value = 'tactical-sandstone'; }
+            }
+            applyProfileImage() {
+                const url = localStorage.getItem('meaux_profile_image') || 'https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/82791d36-cda6-43a6-d402-9406c6392e00/avatar';
+                const headerImg = document.getElementById('header-avatar-img');
+                const sidebarImg = document.getElementById('sidebar-avatar-img');
+                if (headerImg) headerImg.src = url;
+                if (sidebarImg) sidebarImg.src = url;
+            }
+            applyToolIcons() {
+                const meauxmediaIcon = localStorage.getItem('meaux_tool_meauxmedia_icon');
+                const img = document.getElementById('tool-meauxmedia-icon');
+                if (img && meauxmediaIcon) img.src = meauxmediaIcon;
+            }
+            setupEditor() {
+                const ed = document.getElementById('editor');
+                if (ed) ed.value = `/**\n * Inner Animal Media | Production Worker\n * Remastered Parallel Agent Engine\n */\n\nexport default {\n  async fetch(request, env) {\n    const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {\n      messages: [{ role: 'system', content: 'ORCHESTRATOR_ACTIVE' }]\n    });\n    \n    return new Response(JSON.stringify(response));\n  }\n};`;
+            }
+            setupInteractions() {
+                const path = () => window.location.pathname || '/';
+                const applyRoute = () => this.applyRouteFromPath(path());
+                applyRoute();
+                window.addEventListener('popstate', applyRoute);
+                document.addEventListener('keydown', (e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                        if (document.activeElement.id === 'assistant-input') this.sendChatMessage();
+                        else if (document.activeElement.id === 'header-search') this.searchAgentSam();
+                        else this.runWorkflow();
+                    }
+                });
+                const headerSearch = document.getElementById('header-search');
+                if (headerSearch) {
+                    headerSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.searchAgentSam(); } });
+                }
+                const resizer = document.querySelector('[data-resizer="explorer"]');
+                const panel = document.getElementById('explorer-panel');
+                if (resizer && panel) {
+                    let resizing = false;
+                    resizer.addEventListener('mousedown', () => { resizing = true; resizer.classList.add('resizing'); document.body.style.cursor = 'col-resize'; });
+                    document.addEventListener('mousemove', (e) => { if (!resizing) return; const w = e.clientX - 64; if (w > 180 && w < 600) panel.style.width = w + 'px'; });
+                    document.addEventListener('mouseup', () => { resizing = false; resizer.classList.remove('resizing'); document.body.style.cursor = 'default'; });
+                }
+            }
+            searchAgentSam() {
+                const input = document.getElementById('header-search');
+                const val = input && input.value.trim();
+                if (!val) return;
+                document.getElementById('assistant-input').value = val;
+                if (input) input.value = '';
+                this.sendChatMessage();
+            }
+            getApiBase() { return ''; }
+            async refreshD1Status() {
+                const el = document.getElementById('d1-status');
+                if (!el) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/health');
+                    const d = await r.json();
+                    el.textContent = 'D1: ' + (d.ok && d.db === 'connected' ? 'OK' : d.db || 'error');
+                    el.classList.toggle('text-success', d.ok);
+                    el.classList.toggle('text-error', !d.ok);
+                } catch (_) { el.textContent = 'D1: --'; }
+            }
+            applyRouteFromPath(pathname) {
+                const raw = (pathname || '/').replace(/\/+/g, '/').replace(/\/$/, '') || '';
+                const p = raw ? (raw.startsWith('/') ? raw : '/' + raw) : '/';
+                if (p === '/' || p === '/login') {
+                    if (sessionStorage.getItem('meauxide_auth') === '1') {
+                        window.location.replace('/dashboard');
+                        return;
+                    }
+                    document.getElementById('app-public').classList.remove('hidden');
+                    document.getElementById('app-dashboard').classList.add('hidden');
+                    document.getElementById('agent-fab-container')?.classList.add('hidden');
+                    var iframe = document.getElementById('landing-scene');
+                    if (iframe && !iframe.src) iframe.src = '/auth-signin.html';
+                    this.updatePublicHeader();
+                    if (p === '/login') {
+                        if (history.replaceState) history.replaceState({}, '', '/');
+                        this.openAuthModal();
+                    }
+                    return;
+                }
+                var dashPage = getDashboardPageFromPath(pathname);
+                if (dashPage !== null) {
+                    if (sessionStorage.getItem('meauxide_auth') !== '1') {
+                        window.location.replace('/');
+                        return;
+                    }
+                    document.getElementById('app-public').classList.add('hidden');
+                    document.getElementById('app-dashboard').classList.remove('hidden');
+                    document.getElementById('agent-fab-container')?.classList.remove('hidden');
+                    this.navTo(dashPage, false);
+                    return;
+                }
+                window.location.replace('/');
+            }
+            updatePublicHeader() {
+                const authed = sessionStorage.getItem('meauxide_auth') === '1';
+                const heroGuest = document.getElementById('hero-guest');
+                const heroAuthed = document.getElementById('hero-authed');
+                if (heroGuest) heroGuest.classList.toggle('hidden', authed);
+                if (heroAuthed) heroAuthed.classList.toggle('hidden', !authed);
+            }
+            openAuthModal() {
+                const modal = document.getElementById('auth-modal');
+                const err = document.getElementById('auth-error');
+                const emailEl = document.getElementById('login-email');
+                const pw = document.getElementById('login-password');
+                const title = document.getElementById('auth-modal-title');
+                if (title) title.textContent = 'Sign in';
+                if (modal) modal.classList.remove('hidden');
+                if (err) { err.classList.add('hidden'); err.textContent = ''; }
+                if (emailEl) { emailEl.value = ''; emailEl.placeholder = ''; }
+                if (pw) { pw.value = ''; pw.placeholder = ''; }
+            }
+            closeAuthModal() {
+                const modal = document.getElementById('auth-modal');
+                if (modal) modal.classList.add('hidden');
+            }
+            handleLogin(e) {
+                if (e) e.preventDefault();
+                const pwEl = document.getElementById('login-password');
+                const errEl = document.getElementById('auth-error');
+                const pw = (pwEl && pwEl.value) || '';
+                if (pw === '1937') {
+                    sessionStorage.setItem('meauxide_auth', '1');
+                    this.closeAuthModal();
+                    window.location.replace('/dashboard');
+                    return;
+                }
+                if (errEl) { errEl.textContent = 'Invalid password.'; errEl.classList.remove('hidden'); }
+            }
+            navTo(page, pushState = true) {
+                const path = page === 'dashboard' ? '/dashboard' : '/dashboard/' + page;
+                if (pushState && (window.location.pathname.replace(/\/$/, '') || '/') !== path) history.pushState({}, '', path);
+                document.querySelectorAll('.page-view').forEach(v => v.classList.add('hidden'));
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                const ids = getViewAndNavIdsForPage(page);
+                const view = document.getElementById(ids.viewId);
+                const nav = document.getElementById(ids.navId);
+                if (view) view.classList.remove('hidden');
+                if (nav) nav.classList.add('active');
+                const titleEl = document.getElementById('gallery-page-title');
+                if (titleEl && page === 'meauxmedia') titleEl.textContent = 'MeauxMedia — Full CRUD Image Library';
+                else if (titleEl && page === 'gallery') titleEl.textContent = 'Gallery';
+                if (page === 'dashboard') { this.loadDashboard(); this.updateGoalSavedDisplay(); }
+                if (page === 'projects') this.loadProjects();
+                if (page === 'library') this.loadLibrary();
+                if (page === 'analytics') this.loadAnalytics();
+                if (page === 'gallery' || page === 'meauxmedia') this.loadGallery();
+                if (page === 'tools' && typeof lucide !== 'undefined') lucide.createIcons();
+                if (page === 'workspaces') { if (typeof lucide !== 'undefined') lucide.createIcons(); this.loadWorkspaceThemes(); }
+            }
+            updateGoalSavedDisplay() {
+                const saved = localStorage.getItem('meaux_goal_saved');
+                const paidOff = localStorage.getItem('meaux_goal_paid_off');
+                const owed = localStorage.getItem('meaux_goal_owed');
+                const monthly = localStorage.getItem('meaux_goal_monthly');
+                const n = saved ? Number(saved) : 0;
+                const p = paidOff !== null && paidOff !== '' ? Number(paidOff) : 6800;
+                const o = owed !== null && owed !== '' ? Number(owed) : 4000;
+                const m = monthly !== null && monthly !== '' ? Number(monthly) : 450;
+                const el = document.getElementById('goal-saved');
+                const input = document.getElementById('goal-saved-input');
+                const paidEl = document.getElementById('goal-paid-off');
+                const owedEl = document.getElementById('goal-owed');
+                const monthEl = document.getElementById('goal-monthly');
+                if (el) el.textContent = '$' + n.toFixed(0);
+                if (input) input.value = saved !== null && saved !== '' ? saved : '';
+                if (paidEl) paidEl.textContent = '$' + p.toLocaleString();
+                if (owedEl) owedEl.textContent = '$' + o.toLocaleString();
+                if (monthEl) monthEl.textContent = '-$' + m + '/mo';
+            }
+            applyGoalFromApi(goal) {
+                if (!goal) return;
+                if (typeof goal.goal_saved === 'number') localStorage.setItem('meaux_goal_saved', String(goal.goal_saved));
+                if (typeof goal.goal_paid_off === 'number') localStorage.setItem('meaux_goal_paid_off', String(goal.goal_paid_off));
+                if (typeof goal.goal_owed === 'number') localStorage.setItem('meaux_goal_owed', String(goal.goal_owed));
+                if (typeof goal.goal_monthly_payment === 'number') localStorage.setItem('meaux_goal_monthly', String(goal.goal_monthly_payment));
+                this.updateGoalSavedDisplay();
+            }
+            updateGoalSaved(val) {
+                const n = Number(val);
+                if (!Number.isNaN(n) && n >= 0) {
+                    localStorage.setItem('meaux_goal_saved', String(n));
+                    this.updateGoalSavedDisplay();
+                    const paidOff = localStorage.getItem('meaux_goal_paid_off');
+                    const owed = localStorage.getItem('meaux_goal_owed');
+                    const monthly = localStorage.getItem('meaux_goal_monthly');
+                    fetch(this.getApiBase() + '/api/user/goal', {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                            goal_saved: n,
+                            goal_paid_off: paidOff !== null && paidOff !== '' ? Number(paidOff) : 6800,
+                            goal_owed: owed !== null && owed !== '' ? Number(owed) : 4000,
+                            goal_monthly_payment: monthly !== null && monthly !== '' ? Number(monthly) : 450
+                        })
+                    }).catch(() => { });
+                }
+            }
+            openAgentWithGoalPrompt() {
+                const input = document.getElementById('assistant-input');
+                const prompt = 'Help me plan and execute on grants and fundraising to replace my totalled car. I am paying -$450/month. Suggest: personal emergency grants, GoFundMe/crowdfunding, local assistance programs, and a step-by-step plan I can execute.';
+                if (input) input.value = prompt;
+                this.toggleAgentSamDrawer();
+                setTimeout(() => input?.focus(), 200);
+            }
+            openAgentWithMeauxSQLPrompt() {
+                const input = document.getElementById('assistant-input');
+                const prompt = 'I need to read/write D1 (SQLite) data. List tables or run a query for me. MeauxSQL: valid D1/DO SQLite access.';
+                if (input) input.value = prompt;
+                this.toggleAgentSamDrawer();
+                setTimeout(() => input?.focus(), 200);
+            }
+            async loadDashboard() {
+                const statConfigs = document.getElementById('stat-configs');
+                const statSessions = document.getElementById('stat-sessions');
+                const statCommands = document.getElementById('stat-commands');
+                const dbStatus = document.getElementById('dashboard-db-status');
+                if (!statConfigs) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/dashboard');
+                    const d = await r.json();
+                    if (d.ok) {
+                        statConfigs.textContent = d.agent_configs ?? '0';
+                        statSessions.textContent = d.active_sessions ?? '0';
+                        statCommands.textContent = d.agent_commands ?? '0';
+                        if (dbStatus) dbStatus.textContent = 'D1 connected. R2, Workers AI, Vectorize, AutoRAG available.';
+                    } else {
+                        if (dbStatus) dbStatus.textContent = d.error || 'API error';
+                    }
+                } catch (e) {
+                    statConfigs.textContent = '--';
+                    statSessions.textContent = '--';
+                    statCommands.textContent = '--';
+                    if (dbStatus) dbStatus.textContent = 'Offline or Worker not deployed. Deploy from meauxide/ with: npx wrangler deploy';
+                }
+                try {
+                    const gr = await fetch(this.getApiBase() + '/api/user/goal');
+                    const gd = await gr.json();
+                    if (gd.ok && gd.goal) this.applyGoalFromApi(gd.goal);
+                    else this.updateGoalSavedDisplay();
+                } catch (_) {
+                    this.updateGoalSavedDisplay();
+                }
+            }
+            openProjectLightbox(project) {
+                const box = document.getElementById('project-lightbox');
+                const title = document.getElementById('project-lightbox-title');
+                const img = document.getElementById('project-lightbox-img');
+                const desc = document.getElementById('project-lightbox-desc');
+                const timeEl = document.getElementById('project-lightbox-time');
+                const pctEl = document.getElementById('project-lightbox-pct');
+                const lastEl = document.getElementById('project-lightbox-last');
+                const statusEl = document.getElementById('project-lightbox-status');
+                const linkEl = document.getElementById('project-lightbox-link');
+                if (!box || !title) return;
+                title.textContent = project.name || 'Project';
+                if (img) { img.src = project.icon || ''; img.alt = project.name || ''; }
+                if (desc) desc.textContent = project.desc || '';
+                const d1 = this.projectsD1Map[project.slug] || this.projectsD1Map[project.name];
+                const lastAt = d1?.updated_at ? new Date(d1.updated_at * 1000).toLocaleString() : '—';
+                if (timeEl) timeEl.textContent = (d1?.time_tracked_hours != null ? d1.time_tracked_hours + 'h' : null) || '—';
+                if (pctEl) pctEl.textContent = (d1?.completion_pct != null ? d1.completion_pct + '%' : null) || '—';
+                if (lastEl) lastEl.textContent = lastAt;
+                if (statusEl) {
+                    const st = (d1 && d1.status) ? d1.status : '—';
+                    statusEl.textContent = st;
+                    statusEl.className = 'px-2 py-0.5 rounded text-xs font-medium ' + (st === 'active' ? 'bg-success/20 text-success' : 'bg-muted/20 text-muted');
+                }
+                if (linkEl) {
+                    if (project.link) { linkEl.href = project.link; linkEl.classList.remove('hidden'); } else { linkEl.href = '#'; linkEl.classList.add('hidden'); }
+                }
+                box.classList.remove('hidden');
+            }
+            closeProjectLightbox() {
+                document.getElementById('project-lightbox')?.classList.add('hidden');
+            }
+            async loadProjects() {
+                const grid = document.getElementById('projects-grid');
+                if (!grid) return;
+                this.projectsD1Map = {};
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/projects');
+                    const d = await r.json();
+                    if (d.ok && Array.isArray(d.rows)) {
+                        d.rows.forEach(row => {
+                            const key = (row.slug || '').toLowerCase().replace(/\s+/g, '-') || (row.name || '').toLowerCase();
+                            this.projectsD1Map[key] = row;
+                            this.projectsD1Map[row.slug] = row;
+                            this.projectsD1Map[row.name] = row;
+                        });
+                    }
+                } catch (_) { }
+                const projects = this.PROJECTS_STATIC || [];
+                grid.innerHTML = projects.map((p, i) => {
+                    const slugNorm = (p.slug || '').toLowerCase().replace(/\s+/g, '-');
+                    const d1 = this.projectsD1Map[p.slug] || this.projectsD1Map[slugNorm] || this.projectsD1Map[p.name];
+                    const last = d1?.updated_at ? new Date(d1.updated_at * 1000).toLocaleDateString() : '';
+                    return '<button type="button" data-project-index="' + i + '" onclick="ide.openProjectLightbox(ide.PROJECTS_STATIC[' + i + '])" class="group flex flex-col items-center justify-center p-4 sm:p-5 bg-panel border border-border rounded-2xl hover:border-primary/50 hover:shadow-lg transition-all text-left min-h-[140px] sm:min-h-[160px]">' +
+                        '<div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border border-border bg-elevated flex-shrink-0 mb-2">' +
+                        '<img src="' + escapeHtml(p.icon) + '" alt="" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" onerror="this.style.background=\'var(--bg-elevated)\'">' +
+                        '</div><span class="font-semibold text-sm truncate w-full text-center">' + escapeHtml(p.name) + '</span>' +
+                        (last ? '<span class="text-[10px] text-muted truncate w-full text-center mt-0.5">Updated ' + escapeHtml(last) + '</span>' : '') +
+                        '</button>';
+                }).join('');
+            }
+            async loadLibrary() {
+                const list = document.getElementById('library-list');
+                if (!list) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/library');
+                    const d = await r.json();
+                    if (d.ok && Array.isArray(d.rows)) {
+                        if (d.rows.length === 0) { list.innerHTML = '<div class="p-4 text-sm text-muted">No commands in D1.</div>'; return; }
+                        list.innerHTML = '<table class="w-full text-left text-sm"><thead class="bg-elevated border-b border-border"><tr><th class="px-4 py-2 font-medium">Name</th><th class="px-4 py-2 font-medium">Slug</th><th class="px-4 py-2 font-medium">Category</th><th class="px-4 py-2 font-medium">Usage</th></tr></thead><tbody class="divide-y divide-border">' +
+                            d.rows.map(row => '<tr class="hover:bg-surface/50"><td class="px-4 py-2 font-medium">' + escapeHtml(row.name || '') + '</td><td class="px-4 py-2 font-mono text-muted">' + escapeHtml(row.slug || '') + '</td><td class="px-4 py-2 text-muted">' + escapeHtml(row.category || '') + '</td><td class="px-4 py-2">' + (row.usage_count ?? 0) + '</td></tr>').join('') + '</tbody></table>';
+                    } else list.innerHTML = '<div class="p-4 text-sm text-muted">' + (d.error || 'Failed to load') + '</div>';
+                } catch (e) {
+                    list.innerHTML = '<div class="p-4 text-sm text-muted">Offline. Deploy Worker from meauxide/ with: npx wrangler deploy</div>';
+                }
+            }
+            _chartInstances() { if (!this._charts) this._charts = {}; return this._charts; }
+            async loadAnalytics() {
+                const dateInput = document.getElementById('finance-add-date');
+                if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+                const days = document.getElementById('analytics-days')?.value || '30';
+                const base = this.getApiBase();
+                const primary = getComputedStyle(document.body).getPropertyValue('--color-primary').trim() || '#d4c4a8';
+                const muted = getComputedStyle(document.body).getPropertyValue('--color-muted').trim() || '#8c8879';
+                try {
+                    const [fRes, nRes, cursorStatusRes, cursorCapRes] = await Promise.all([
+                        fetch(base + '/api/analytics/finance?days=' + days),
+                        fetch(base + '/api/analytics/neurons?days=' + days),
+                        fetch(base + '/api/cursor/status').catch(() => null),
+                        fetch(base + '/api/cursor/spend-cap').catch(() => null)
+                    ]);
+                    const f = await fRes.json();
+                    const n = await nRes.json();
+                    const cursorStatus = cursorStatusRes?.ok ? await cursorStatusRes.json() : null;
+                    const cursorCap = cursorCapRes?.ok ? await cursorCapRes.json() : null;
+                    const statusEl = document.getElementById('cursor-status-msg');
+                    const capInput = document.getElementById('cursor-spend-cap-input');
+                    const capStatusEl = document.getElementById('cursor-spend-cap-status');
+                    const capWarningEl = document.getElementById('cursor-spend-cap-warning');
+                    if (statusEl) statusEl.textContent = cursorStatus?.configured ? 'API key: configured' : 'API key: not set (optional; add via wrangler secret put CURSOR_API_KEY)';
+                    if (capInput) capInput.value = cursorCap?.spend_cap_monthly != null ? String(cursorCap.spend_cap_monthly) : '';
+                    if (capStatusEl) {
+                        capStatusEl.classList.toggle('hidden', cursorCap?.spend_cap_monthly == null);
+                        capStatusEl.textContent = cursorCap?.spend_cap_monthly != null ? 'Cap: $' + cursorCap.spend_cap_monthly + '/period' : '';
+                    }
+                    const totalCost = n.summary?.totalCost ?? 0;
+                    const cap = cursorCap?.spend_cap_monthly;
+                    if (capWarningEl) {
+                        if (cap != null && cap > 0 && totalCost > cap) {
+                            capWarningEl.textContent = 'Spend this period ($' + totalCost.toFixed(2) + ') is above your cap ($' + cap + '). Consider reducing usage or raising the cap.';
+                            capWarningEl.classList.remove('hidden');
+                        } else capWarningEl.classList.add('hidden');
+                    }
+                    document.getElementById('finance-total').textContent = f.summary?.total != null ? '$' + Number(f.summary.total).toFixed(2) : '--';
+                    document.getElementById('finance-count').textContent = f.summary?.count ?? '--';
+                    document.getElementById('finance-categories').textContent = Array.isArray(f.byCategory) ? f.byCategory.length : '--';
+                    document.getElementById('neurons-cost').textContent = n.summary?.totalCost != null ? '$' + Number(n.summary.totalCost).toFixed(4) : '--';
+                    document.getElementById('neurons-tokens').textContent = n.summary?.totalTokens != null ? (n.summary.totalTokens / 1000).toFixed(1) + 'k' : '--';
+                    document.getElementById('neurons-count').textContent = n.summary?.count ?? '--';
+                    const financeNote = document.getElementById('finance-note');
+                    const neuronsNote = document.getElementById('neurons-note');
+                    if (f.note) { financeNote.textContent = f.note; financeNote.classList.remove('hidden'); } else if (f.summary?.count === 0) { financeNote.textContent = 'No finance entries in selected period. Try «All time» or add via POST /api/analytics/finance.'; financeNote.classList.remove('hidden'); } else financeNote.classList.add('hidden');
+                    if (n.note) { neuronsNote.textContent = n.note; neuronsNote.classList.remove('hidden'); } else if (n.summary?.count === 0) { neuronsNote.textContent = 'No AI usage in this period. Import a Cursor usage CSV above or use RAG / api/ai/generate.'; neuronsNote.classList.remove('hidden'); } else neuronsNote.classList.add('hidden');
+                    const palette = [primary, '#5e6ad2', '#26b5ce', '#88a67d', '#c48c5a'];
+                    ['finance-month', 'finance-category', 'neurons-day', 'neurons-provider', 'neurons-account'].forEach(id => {
+                        try { const c = this._chartInstances()[id]; if (c) c.destroy(); delete this._chartInstances()[id]; } catch (_) { delete this._chartInstances()[id]; }
+                    });
+                    const viewAnalytics = document.getElementById('view-analytics');
+                    const isAnalyticsVisible = viewAnalytics && !viewAnalytics.classList.contains('hidden');
+                    if (typeof Chart !== 'undefined' && isAnalyticsVisible) {
+                        const self = this;
+                        requestAnimationFrame(function drawCharts() {
+                            if (typeof Chart === 'undefined') return;
+                            const primary2 = getComputedStyle(document.body).getPropertyValue('--color-primary').trim() || '#d4c4a8';
+                            const muted2 = getComputedStyle(document.body).getPropertyValue('--color-muted').trim() || '#8c8879';
+                            const palette2 = [primary2, '#5e6ad2', '#26b5ce', '#88a67d', '#c48c5a'];
+                            try {
+                                if (Array.isArray(f.byMonth) && f.byMonth.length > 0) {
+                                    const el = document.getElementById('chart-finance-month');
+                                    if (el && el.offsetParent) {
+                                        self._chartInstances()['finance-month'] = new Chart(el, {
+                                            type: 'bar',
+                                            data: { labels: f.byMonth.map(m => m.month), datasets: [{ label: 'Total', data: f.byMonth.map(m => m.total), backgroundColor: primary2 + '80', borderColor: primary2, borderWidth: 1 }] },
+                                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: muted2 + '40' }, ticks: { color: muted2 } }, x: { grid: { display: false }, ticks: { color: muted2 } } } }
+                                        });
+                                    }
+                                }
+                                if (Array.isArray(f.byCategory) && f.byCategory.length > 0) {
+                                    const el = document.getElementById('chart-finance-category');
+                                    if (el && el.offsetParent) {
+                                        self._chartInstances()['finance-category'] = new Chart(el, {
+                                            type: 'doughnut',
+                                            data: { labels: f.byCategory.map(c => c.category), datasets: [{ data: f.byCategory.map(c => c.total), backgroundColor: f.byCategory.map((_, i) => palette2[i % palette2.length] + 'cc'), borderColor: palette2, borderWidth: 1 }] },
+                                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: muted2 } } } }
+                                        });
+                                    }
+                                }
+                                const dayLabels = Array.isArray(n.byDay) && n.byDay.length > 0 ? n.byDay.map(d => d.date) : ['No data'];
+                                const dayData = Array.isArray(n.byDay) && n.byDay.length > 0 ? n.byDay.map(d => Number(d.cost) || 0) : [0];
+                                const dayMax = Math.max(...dayData, 1);
+                                const elDay = document.getElementById('chart-neurons-day');
+                                if (elDay && elDay.offsetParent) {
+                                    self._chartInstances()['neurons-day'] = new Chart(elDay, {
+                                        type: 'bar',
+                                        data: { labels: dayLabels, datasets: [{ label: 'Cost ($)', data: dayData, backgroundColor: primary2 + '80', borderColor: primary2, borderWidth: 1 }] },
+                                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, suggestedMax: dayMax * 1.2 || 1, grid: { color: muted2 + '40' }, ticks: { color: muted2 } }, x: { grid: { display: false }, ticks: { color: muted2, maxRotation: 45 } } } }
+                                    });
+                                }
+                                const prov = Array.isArray(n.byProvider) && n.byProvider.length > 0 ? n.byProvider : [{ provider: 'No data', cost: 0 }];
+                                const providerLabels = { workers_ai: 'Workers AI', Cursor: 'Cursor', cursor_api: 'Cursor API', Claude: 'Claude', gemini_api: 'Gemini API', ChatGPT: 'ChatGPT' };
+                                const provLabels = prov.map(p => providerLabels[p.provider] || p.provider);
+                                const elProv = document.getElementById('chart-neurons-provider');
+                                if (elProv && elProv.offsetParent) {
+                                    self._chartInstances()['neurons-provider'] = new Chart(elProv, {
+                                        type: 'doughnut',
+                                        data: { labels: provLabels, datasets: [{ data: prov.map(p => Number(p.cost) || 0), backgroundColor: prov.map((_, i) => palette2[i % palette2.length] + 'cc'), borderColor: palette2, borderWidth: 2 }] },
+                                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: muted2, padding: 12 } } } }
+                                    });
+                                }
+                                const acc = Array.isArray(n.byAccount) && n.byAccount.length > 0 ? n.byAccount : [{ account: 'No data', cost: 0 }];
+                                const accLabels = acc.map(a => a.account === '(no account)' ? 'Other' : (a.account || 'No data'));
+                                const elAcc = document.getElementById('chart-neurons-account');
+                                if (elAcc && elAcc.offsetParent) {
+                                    self._chartInstances()['neurons-account'] = new Chart(elAcc, {
+                                        type: 'doughnut',
+                                        data: { labels: accLabels, datasets: [{ data: acc.map(a => Number(a.cost) || 0), backgroundColor: acc.map((_, i) => palette2[i % palette2.length] + 'cc'), borderColor: palette2, borderWidth: 2 }] },
+                                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: muted2, padding: 12 } } } }
+                                    });
+                                }
+                            } catch (err) { console.warn('Analytics charts:', err); }
+                        });
+                    }
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                } catch (e) {
+                    document.getElementById('finance-total').textContent = '--';
+                    document.getElementById('finance-count').textContent = '--';
+                    document.getElementById('neurons-cost').textContent = '--';
+                    document.getElementById('neurons-tokens').textContent = '--';
+                    document.getElementById('neurons-count').textContent = '--';
+                }
+            }
+            async addFinanceEntry(ev) {
+                ev.preventDefault();
+                const dateEl = document.getElementById('finance-add-date');
+                const amountEl = document.getElementById('finance-add-amount');
+                const categoryEl = document.getElementById('finance-add-category');
+                const descEl = document.getElementById('finance-add-desc');
+                const msgEl = document.getElementById('finance-add-msg');
+                if (!dateEl || !amountEl || !categoryEl || !msgEl) return;
+                const date = dateEl.value;
+                const amount = Number(amountEl.value);
+                const category = (categoryEl.value || '').trim();
+                const description = descEl?.value?.trim() || null;
+                if (!category || Number.isNaN(amount)) { msgEl.textContent = 'Date, amount, and category required.'; msgEl.classList.remove('hidden'); return; }
+                msgEl.classList.add('hidden');
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/analytics/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, amount, category, description }) });
+                    const d = await r.json();
+                    if (d.ok) { msgEl.textContent = 'Entry added.'; msgEl.classList.remove('hidden'); msgEl.classList.remove('text-error'); dateEl.value = new Date().toISOString().slice(0, 10); amountEl.value = ''; categoryEl.value = ''; if (descEl) descEl.value = ''; this.loadAnalytics(); }
+                    else { msgEl.textContent = d.error || 'Failed'; msgEl.classList.remove('hidden'); msgEl.classList.add('text-error'); }
+                } catch (e) { msgEl.textContent = 'Network error.'; msgEl.classList.remove('hidden'); msgEl.classList.add('text-error'); }
+            }
+            parseCSVLine(line) {
+                const out = []; let cur = ''; let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    const c = line[i];
+                    if (c === '"') inQuotes = !inQuotes;
+                    else if (c === ',' && !inQuotes) { out.push(cur.trim()); cur = ''; }
+                    else cur += c;
+                }
+                out.push(cur.trim());
+                return out;
+            }
+            async saveCursorSpendCap() {
+                const input = document.getElementById('cursor-spend-cap-input');
+                const val = input?.value?.trim();
+                const num = val === '' ? null : Number(val);
+                if (num !== null && (Number.isNaN(num) || num < 0)) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/cursor/spend-cap', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spend_cap_monthly: num }) });
+                    const d = await r.json();
+                    if (d.ok) this.loadAnalytics();
+                } catch (_) { }
+            }
+            async launchCursorAgent() {
+                const promptEl = document.getElementById('cursor-agent-prompt');
+                const repoEl = document.getElementById('cursor-agent-repo');
+                const refEl = document.getElementById('cursor-agent-ref');
+                const resultEl = document.getElementById('cursor-agent-result');
+                const btnEl = document.getElementById('cursor-agent-launch-btn');
+                if (!promptEl || !repoEl || !resultEl || !btnEl) return;
+                const text = (promptEl.value || '').trim();
+                const repository = (repoEl.value || '').trim();
+                const ref = (refEl?.value || 'main').trim();
+                if (!text) { resultEl.textContent = 'Enter a prompt.'; resultEl.classList.remove('hidden'); return; }
+                if (!repository) { resultEl.textContent = 'Enter a GitHub repo URL.'; resultEl.classList.remove('hidden'); return; }
+                resultEl.classList.remove('hidden');
+                resultEl.textContent = 'Launching…';
+                resultEl.classList.remove('text-amber-600', 'text-green-600');
+                btnEl.disabled = true;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/cursor/agent', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: { text }, source: { repository, ref } })
+                    });
+                    const d = await r.json();
+                    if (d.ok && d.cursor) {
+                        resultEl.textContent = 'Agent launched. ' + (d.cursor.id ? 'ID: ' + d.cursor.id + '. ' : '') + (d.cursor.status ? 'Status: ' + d.cursor.status : '') + (d.cursor.web_url ? ' Check Cursor dashboard for progress.' : '');
+                        resultEl.classList.add('text-green-600');
+                    } else {
+                        resultEl.textContent = d.error || (d.cursor?.message) || 'Launch failed.';
+                        resultEl.classList.add('text-amber-600');
+                    }
+                } catch (e) {
+                    resultEl.textContent = 'Network error: ' + (e.message || 'failed');
+                    resultEl.classList.add('text-amber-600');
+                }
+                btnEl.disabled = false;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            async importCursorCsv() {
+                const fileInput = document.getElementById('cursor-csv-input');
+                const accountInput = document.getElementById('cursor-import-account');
+                const msgEl = document.getElementById('cursor-import-msg');
+                if (!fileInput?.files?.length || !accountInput || !msgEl) return;
+                const file = fileInput.files[0];
+                const account = (accountInput.value || '').trim();
+                if (!account) { msgEl.textContent = 'Enter account email.'; msgEl.classList.remove('hidden'); msgEl.classList.add('text-error'); return; }
+                msgEl.textContent = 'Parsing CSV...'; msgEl.classList.remove('hidden'); msgEl.classList.remove('text-error');
+                const text = await file.text();
+                const lines = text.split(/\r?\n/).filter(Boolean);
+                if (lines.length < 2) { msgEl.textContent = 'CSV has no data rows.'; msgEl.classList.add('text-error'); return; }
+                const header = this.parseCSVLine(lines[0]);
+                const events = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const vals = this.parseCSVLine(lines[i]);
+                    const row = {}; header.forEach((h, j) => { row[h] = (vals[j] ?? '').replace(/^"|"$/g, ''); });
+                    events.push(row);
+                }
+                msgEl.textContent = 'Uploading ' + events.length + ' events...';
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/analytics/neurons/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account, provider: 'Cursor', events }) });
+                    const d = await r.json();
+                    if (d.ok) { msgEl.textContent = 'Imported ' + d.inserted + ' of ' + d.total + ' for ' + d.account + '.'; msgEl.classList.remove('text-error'); fileInput.value = ''; this.loadAnalytics(); }
+                    else { msgEl.textContent = d.error || 'Import failed.'; msgEl.classList.add('text-error'); }
+                } catch (e) { msgEl.textContent = 'Network error.'; msgEl.classList.add('text-error'); }
+            }
+            loadGallery() {
+                this._galleryActiveTab = 'cf';
+                document.getElementById('gallery-cf')?.classList.remove('hidden');
+                document.getElementById('gallery-r2')?.classList.add('hidden');
+                document.getElementById('gallery-tab-cf')?.classList.add('bg-primary', 'text-black');
+                document.getElementById('gallery-tab-cf')?.classList.remove('bg-elevated', 'border');
+                document.getElementById('gallery-tab-r2')?.classList.remove('bg-primary', 'text-black');
+                document.getElementById('gallery-tab-r2')?.classList.add('bg-elevated', 'border', 'border-border');
+                this.loadCfImages(1);
+            }
+            galleryTab(tab) {
+                this._galleryActiveTab = tab;
+                const cf = document.getElementById('gallery-cf');
+                const r2 = document.getElementById('gallery-r2');
+                const btnCf = document.getElementById('gallery-tab-cf');
+                const btnR2 = document.getElementById('gallery-tab-r2');
+                if (tab === 'cf') {
+                    cf?.classList.remove('hidden'); r2?.classList.add('hidden');
+                    btnCf?.classList.add('bg-primary', 'text-black'); btnCf?.classList.remove('bg-elevated', 'border');
+                    btnR2?.classList.remove('bg-primary', 'text-black'); btnR2?.classList.add('bg-elevated', 'border', 'border-border');
+                    this.loadCfImages(this._galleryCfPage);
+                } else {
+                    r2?.classList.remove('hidden'); cf?.classList.add('hidden');
+                    btnR2?.classList.add('bg-primary', 'text-black'); btnR2?.classList.remove('bg-elevated', 'border');
+                    btnCf?.classList.remove('bg-primary', 'text-black'); btnCf?.classList.add('bg-elevated', 'border', 'border-border');
+                    this.loadR2Images(null);
+                }
+            }
+            async loadCfImages(page) {
+                const grid = document.getElementById('gallery-cf-grid');
+                const prevBtn = document.getElementById('gallery-cf-prev');
+                const nextBtn = document.getElementById('gallery-cf-next');
+                const pageInfo = document.getElementById('gallery-cf-page-info');
+                if (!grid) return;
+                page = Math.max(1, page || 1);
+                this._galleryCfPage = page;
+                grid.innerHTML = '<div class="col-span-full text-sm text-muted">Loading…</div>';
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/images?page=' + page + '&per_page=100');
+                    const d = await r.json();
+                    if (!d.ok) { grid.innerHTML = '<div class="col-span-full text-sm text-amber-600">' + (d.error || 'Failed to load') + '. Set CLOUDFLARE_IMAGES_API_TOKEN secret.</div>'; return; }
+                    const images = d.images || [];
+                    prevBtn.disabled = page <= 1;
+                    nextBtn.disabled = images.length < 100;
+                    pageInfo.textContent = 'Page ' + page + (images.length ? ' (' + images.length + ' images)' : '');
+                    if (images.length === 0) { grid.innerHTML = '<div class="col-span-full text-sm text-muted">No images. Upload via URL or file above.</div>'; return; }
+                    grid.innerHTML = images.map(img => {
+                        const thumb = img.thumbnail || img.url || '';
+                        const url = img.url || '';
+                        const name = (img.filename || img.id || '').slice(0, 30);
+                        return '<div class="bg-panel border border-border rounded-xl overflow-hidden group"><a href="' + url + '" target="_blank" rel="noopener" class="block aspect-square bg-elevated"><img src="' + thumb + '" alt="" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" onerror="this.src=\'\';this.alt=\'?\';"></a><div class="p-2 flex items-center justify-between gap-1"><span class="text-[10px] truncate text-muted" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span><button type="button" data-cf-id="' + escapeHtml(img.id) + '" onclick="ide.deleteCfImage(this.getAttribute(\'data-cf-id\'))" class="text-red-500 hover:text-red-400 text-xs font-semibold" title="Delete">Delete</button></div></div>';
+                    }).join('');
+                } catch (e) { grid.innerHTML = '<div class="col-span-full text-sm text-amber-600">Network error.</div>'; }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            async deleteCfImage(id) {
+                if (!id || !confirm('Delete this image from Cloudflare Images?')) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/images/' + encodeURIComponent(id), { method: 'DELETE' });
+                    const d = await r.json();
+                    if (d.ok) this.loadCfImages(this._galleryCfPage);
+                } catch (_) { }
+            }
+            async uploadCfImageUrl() {
+                const input = document.getElementById('gallery-cf-upload-url');
+                const url = (input?.value || '').trim();
+                if (!url) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/images', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+                    const d = await r.json();
+                    if (d.ok) { input.value = ''; this.loadCfImages(this._galleryCfPage); }
+                    else alert(d.error || 'Upload failed');
+                } catch (e) { alert('Network error'); }
+            }
+            async uploadCfImageFile() {
+                const input = document.getElementById('gallery-cf-upload-file');
+                if (!input?.files?.length) return;
+                const file = input.files[0];
+                const fd = new FormData();
+                fd.append('file', file);
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/images', { method: 'POST', body: fd });
+                    const d = await r.json();
+                    if (d.ok) { input.value = ''; this.loadCfImages(this._galleryCfPage); }
+                    else alert(d.error || 'Upload failed');
+                } catch (e) { alert('Network error'); }
+            }
+            async loadR2Images(cursor) {
+                const grid = document.getElementById('gallery-r2-grid');
+                const nextBtn = document.getElementById('gallery-r2-next');
+                const infoEl = document.getElementById('gallery-r2-info');
+                const prefixEl = document.getElementById('gallery-r2-prefix');
+                if (!grid) return;
+                if (cursor === null) this._galleryR2Cursor = undefined;
+                else if (cursor) this._galleryR2Cursor = cursor;
+                const prefix = (prefixEl?.value || '').trim() || undefined;
+                let url = this.getApiBase() + '/api/r2?limit=100';
+                if (prefix) url += '&prefix=' + encodeURIComponent(prefix);
+                if (this._galleryR2Cursor) url += '&cursor=' + encodeURIComponent(this._galleryR2Cursor);
+                grid.innerHTML = '<div class="col-span-full text-sm text-muted">Loading R2…</div>';
+                try {
+                    const r = await fetch(url);
+                    const d = await r.json();
+                    if (!d.ok) { grid.innerHTML = '<div class="col-span-full text-sm text-amber-600">' + (d.error || 'Failed') + '</div>'; return; }
+                    const imageExt = /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?|$)/i;
+                    const objects = (d.objects || []).filter(o => imageExt.test(o.key));
+                    this._galleryR2Cursor = d.cursor;
+                    nextBtn.classList.toggle('hidden', !d.truncated);
+                    infoEl.textContent = objects.length + ' images' + (d.truncated ? ' (more available)' : '');
+                    const base = this.getApiBase();
+                    if (objects.length === 0) { grid.innerHTML = '<div class="col-span-full text-sm text-muted">No image keys in R2. Upload above (key e.g. images/photo.jpg).</div>'; return; }
+                    grid.innerHTML = objects.map(o => {
+                        const src = base + '/api/r2/' + encodeURIComponent(o.key);
+                        const name = (o.key || '').split('/').pop() || o.key;
+                        return '<div class="bg-panel border border-border rounded-xl overflow-hidden group"><a href="' + src + '" target="_blank" rel="noopener" class="block aspect-square bg-elevated"><img src="' + src + '" alt="" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" onerror="this.style.background=\'#333\';this.alt=\'?\';"></a><div class="p-2 flex items-center justify-between gap-1"><span class="text-[10px] truncate text-muted" title="' + escapeHtml(o.key) + '">' + escapeHtml(name) + '</span><button type="button" data-r2-key="' + escapeHtml(o.key) + '" onclick="ide.deleteR2Key(this.getAttribute(\'data-r2-key\'))" class="text-red-500 hover:text-red-400 text-xs font-semibold">Delete</button></div></div>';
+                    }).join('');
+                } catch (e) { grid.innerHTML = '<div class="col-span-full text-sm text-amber-600">Network error.</div>'; }
+            }
+            async deleteR2Key(key) {
+                if (!key || !confirm('Delete ' + key + ' from R2?')) return;
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/r2/' + encodeURIComponent(key), { method: 'DELETE' });
+                    const d = await r.json();
+                    if (d.ok) this.loadR2Images(null);
+                } catch (_) { }
+            }
+            async uploadR2File() {
+                const fileInput = document.getElementById('gallery-r2-upload-file');
+                const keyInput = document.getElementById('gallery-r2-upload-key');
+                const key = (keyInput?.value || '').trim();
+                if (!fileInput?.files?.length) { alert('Choose a file'); return; }
+                if (!key) { alert('Enter R2 key (e.g. images/photo.jpg)'); return; }
+                const file = fileInput.files[0];
+                try {
+                    const r = await fetch(this.getApiBase() + '/api/r2/' + encodeURIComponent(key), { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
+                    const d = await r.json();
+                    if (d.ok) { fileInput.value = ''; keyInput.value = ''; this.loadR2Images(null); }
+                    else alert(d.error || 'Upload failed');
+                } catch (e) { alert('Network error'); }
+            }
+            toggleAgentSamDrawer() {
+                const drawer = document.getElementById('agent-sam-drawer');
+                const backdrop = document.getElementById('agent-sam-drawer-backdrop');
+                const fab = document.getElementById('agent-sam-fab');
+                const addBtn = document.getElementById('agent-sam-add-btn');
+                if (!drawer) return;
+                const open = drawer.classList.toggle('open');
+                if (backdrop) backdrop.classList.toggle('open', open);
+                if (fab) fab.classList.toggle('hidden', open);
+                if (addBtn) addBtn.classList.toggle('hidden', open);
+                this.toggleAgentPicker(false);
+                if (open) {
+                    this.populateAgentProjectSelect();
+                    this.applyAgentModeState();
+                    setTimeout(() => document.getElementById('assistant-input')?.focus(), 100);
+                }
+            }
+            toggleAgentPicker(show) {
+                const el = document.getElementById('agent-picker-dropdown');
+                if (!el) return;
+                if (show === undefined) el.classList.toggle('hidden');
+                else el.classList.toggle('hidden', !show);
+            }
+            setActiveAgent(id) {
+                try { sessionStorage.setItem('meauxide_active_agent', id || 'agent_sam'); } catch (_) { }
+            }
+            populateAgentProjectSelect() {
+                const sel = document.getElementById('agent-drawer-project');
+                if (!sel) return;
+                const projects = this.PROJECTS_STATIC || [];
+                const current = sel.value || sessionStorage.getItem('meauxide_agent_project') || '';
+                sel.innerHTML = '<option value="">No project</option>' + projects.map(p => '<option value="' + escapeHtml(p.slug || p.name) + '">' + escapeHtml(p.name) + '</option>').join('');
+                if (current) sel.value = current;
+            }
+            saveAgentProjectContext() {
+                const sel = document.getElementById('agent-drawer-project');
+                try { sessionStorage.setItem('meauxide_agent_project', (sel && sel.value) || ''); } catch (_) { }
+            }
+            setAgentMode(mode) {
+                try { sessionStorage.setItem('meauxide_agent_mode', mode || 'agent'); } catch (_) { }
+                ['plan', 'agent', 'guide'].forEach(m => {
+                    const btn = document.getElementById('agent-mode-' + m);
+                    if (!btn) return;
+                    if (m === mode) { btn.classList.add('bg-primary/20', 'border-primary', 'text-primary'); btn.classList.remove('bg-elevated', 'border-border', 'text-muted'); }
+                    else { btn.classList.remove('bg-primary/20', 'border-primary', 'text-primary'); btn.classList.add('bg-elevated', 'border-border', 'text-muted'); }
+                });
+            }
+            applyAgentModeState() {
+                const mode = sessionStorage.getItem('meauxide_agent_mode') || 'agent';
+                this.setAgentMode(mode);
+            }
+            dismissAppDeck() {
+                const deck = document.getElementById('app-deck');
+                if (deck) deck.classList.add('hidden');
+                try { sessionStorage.setItem('meauxide_app_deck_dismissed', '1'); } catch (_) { }
+            }
+            showAppDeck() {
+                if (localStorage.getItem('meauxide_app_deck_off') === '1') return;
+                if (sessionStorage.getItem('meauxide_app_deck_dismissed') === '1') return;
+                const deck = document.getElementById('app-deck');
+                if (deck) deck.classList.remove('hidden');
+            }
+            applyAppDeckState() {
+                if (localStorage.getItem('meauxide_app_deck_off') === '1') return;
+                if (sessionStorage.getItem('meauxide_app_deck_dismissed') === '1') return;
+                const deck = document.getElementById('app-deck');
+                const fab = document.getElementById('agent-fab-container');
+                if (deck && fab && !fab.classList.contains('hidden')) {
+                    setTimeout(() => deck.classList.remove('hidden'), 800);
+                }
+            }
+            setAppDeckOff(off) {
+                try { localStorage.setItem('meauxide_app_deck_off', off ? '1' : ''); } catch (_) { }
+                const deck = document.getElementById('app-deck');
+                if (deck) deck.classList.toggle('hidden', off);
+            }
+            setupDrawerSwipe() {
+                const drawer = document.getElementById('agent-sam-drawer');
+                if (!drawer) return;
+                let startX = 0;
+                drawer.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; drawer.setAttribute('data-swipe-start-x', String(startX)); }, { passive: true });
+                drawer.addEventListener('touchend', (e) => {
+                    const endX = e.changedTouches[0].clientX;
+                    const start = Number(drawer.getAttribute('data-swipe-start-x')) || startX;
+                    if (endX - start > 60) ide.toggleAgentSamDrawer();
+                }, { passive: true });
+            }
+            setupAppDeckSwipe() {
+                const deck = document.getElementById('app-deck');
+                if (!deck) return;
+                let startY = 0;
+                deck.addEventListener('touchstart', (e) => { startY = e.touches[0].clientY; }, { passive: true });
+                deck.addEventListener('touchend', (e) => {
+                    const endY = e.changedTouches[0].clientY;
+                    if (endY - startY > 50) this.dismissAppDeck();
+                }, { passive: true });
+            }
+            toggleSidebar() {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                if (!sidebar) return;
+                const isMobile = window.matchMedia('(max-width: 767px)').matches;
+                if (isMobile) {
+                    sidebar.classList.toggle('open');
+                    if (overlay) overlay.classList.toggle('hidden');
+                } else {
+                    sidebar.classList.toggle('docked-closed');
+                    try { localStorage.setItem('meauxide_sidebar_open', sidebar.classList.contains('docked-closed') ? '' : '1'); } catch (_) { }
+                }
+            }
+            applySidebarDockState() {
+                const sidebar = document.getElementById('sidebar');
+                if (!sidebar || window.matchMedia('(max-width: 767px)').matches) return;
+                const open = localStorage.getItem('meauxide_sidebar_open');
+                if (open !== '1') sidebar.classList.add('docked-closed');
+                else sidebar.classList.remove('docked-closed');
+            }
+            async runWorkflow() {
+                this.addTerminalLine('INITIATING PARALLEL EXECUTION SEQUENCE...', '#d4c4a8');
+                setTimeout(() => this.addTerminalLine('→ [NODE_01] CHECKING R2 WORKSPACE INTEGRITY...', '#60a5fa'), 300);
+                setTimeout(() => this.addTerminalLine('→ [NODE_02] POLLING D1 DATABASE_SHARDS...', '#60a5fa'), 600);
+                try {
+                    const response = await fetch('https://inneranimal-orchestrator.meauxbility.workers.dev/execute', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            pipelineId: 'meauxwork-' + Date.now(), stages: [
+                                { id: 'scan', agent: 'researcher', input: 'Scan workspace for orphans.', parallel: true },
+                                { id: 'sync', agent: 'analyst', input: 'Sync shadow buffers.', parallel: true }
+                            ]
+                        })
+                    });
+                    await response.json();
+                    this.addTerminalLine('✓ PIPELINE SYNC COMPLETE. STATUS: OPERATIONAL.', '#34d399');
+                } catch (err) { this.addTerminalLine('⨯ SEQUENCE ABORTED: ' + err.message, '#f87171'); }
+            }
+            addTerminalLine(txt, clr = 'rgba(255,255,255,0.4)') {
+                const out = document.getElementById('terminal-output');
+                const div = document.createElement('div');
+                div.style.color = clr;
+                div.className = 'fade-in flex gap-3 text-[11px] font-mono leading-relaxed';
+                div.innerHTML = '<span class="opacity-30">[' + new Date().toLocaleTimeString() + ']</span> <span class="font-bold">' + txt + '</span>';
+                out.appendChild(div); out.scrollTop = out.scrollHeight;
+            }
+            clearTerminal() { document.getElementById('terminal-output').innerHTML = '<div class="text-primary/40 font-bold">$ TERM_PURGE_COMPLETE.</div>'; }
+            async sendChatMessage() {
+                const input = document.getElementById('assistant-input');
+                const val = input.value.trim();
+                if (!val) return;
+                this.saveAgentProjectContext();
+                const projectSlug = document.getElementById('agent-drawer-project')?.value || sessionStorage.getItem('meauxide_agent_project') || '';
+                this.appendMessage('user', val);
+                input.value = '';
+                const loadId = this.appendMessage('bot', '<div class="flex gap-1"><span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></span><span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s]"></span><span class="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s]"></span></div>');
+                try {
+                    const body = { question: val };
+                    if (projectSlug) body.project = projectSlug;
+                    const res = await fetch(this.getApiBase() + '/api/rag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                    const data = await res.json();
+                    const text = data.response || data.error || (data.message || 'No response.');
+                    this.updateMessage(loadId, escapeHtml(text));
+                } catch (err) { this.updateMessage(loadId, 'Error: ' + escapeHtml(err.message || 'Network failed')); }
+            }
+            appendMessage(role, txt) {
+                const chat = document.getElementById('chat-messages');
+                const id = 'msg-' + Date.now();
+                const div = document.createElement('div');
+                div.id = id;
+                div.className = 'flex gap-3 ' + (role === 'user' ? 'flex-row-reverse' : '') + ' fade-in mb-4';
+                const icon = role === 'user' ? '<div class="w-8 h-8 rounded-lg bg-surface border border-border flex items-center justify-center text-xs font-semibold flex-shrink-0">You</div>' : '<div class="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><img src="https://imagedelivery.net/g7wf09fCONpnidkRnR_5vw/b5557284-485e-4305-2c5a-49c6acf99a00/thumbnail" alt="Agent_Sam" class="w-full h-full object-cover"></div>';
+                div.innerHTML = icon + '<div class="flex-1 space-y-1 ' + (role === 'user' ? 'text-right' : '') + '"><div class="text-[10px] font-medium text-muted">' + (role === 'user' ? 'You' : 'agent_sam') + '</div><div class="text-[13px] leading-relaxed p-4 rounded-xl inline-block max-w-[90%] ' + (role === 'user' ? 'msg-user-content' : 'msg-bot-content') + ' content-block">' + txt + '</div></div>';
+                chat.appendChild(div);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                chat.scrollTop = chat.scrollHeight;
+                return id;
+            }
+            updateMessage(id, txt) {
+                const el = document.getElementById(id);
+                if (el) { const content = el.querySelector('.content-block'); if (content) content.innerHTML = txt; }
+                document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+            }
+            openSettings() {
+                document.getElementById('settings-modal').classList.remove('hidden');
+                const profileUrl = document.getElementById('profile-image-url');
+                if (profileUrl) profileUrl.value = localStorage.getItem('meaux_profile_image') || '';
+                const toolIcon = document.getElementById('tool-meauxmedia-icon-url');
+                if (toolIcon) toolIcon.value = localStorage.getItem('meaux_tool_meauxmedia_icon') || '';
+                const appDeckOff = document.getElementById('settings-app-deck-off');
+                if (appDeckOff) appDeckOff.checked = localStorage.getItem('meauxide_app_deck_off') === '1';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+            saveSettings() {
+                localStorage.setItem('meaux_openai', document.getElementById('openai-key').value);
+                localStorage.setItem('meaux_cf_token', document.getElementById('cf-token').value);
+                localStorage.setItem('meaux_cursor', document.getElementById('cursor-key').value);
+                const profileUrl = document.getElementById('profile-image-url')?.value?.trim();
+                if (profileUrl) { localStorage.setItem('meaux_profile_image', profileUrl); this.applyProfileImage(); }
+                const toolIconUrl = document.getElementById('tool-meauxmedia-icon-url')?.value?.trim();
+                if (toolIconUrl) {
+                    localStorage.setItem('meaux_tool_meauxmedia_icon', toolIconUrl);
+                    const img = document.getElementById('tool-meauxmedia-icon');
+                    if (img) img.src = toolIconUrl;
+                }
+                const appDeckOff = document.getElementById('settings-app-deck-off');
+                this.setAppDeckOff(!!(appDeckOff && appDeckOff.checked));
+                this.addTerminalLine('SYSTEM_CONFIG_COMMITTED.', '#34d399');
+                this.closeSettings();
+            }
+            changeTheme(t) {
+                if (!t) return;
+                document.body.setAttribute('data-theme', t);
+                localStorage.setItem('meaux_theme', t);
+                const sel = document.getElementById('themeSelect');
+                if (sel) sel.value = t;
+                this.addTerminalLine('Theme: ' + t, 'var(--color-primary)');
+            }
+            setWorkspaceTheme(workspaceId, theme) {
+                if (!workspaceId || !theme) return;
+                localStorage.setItem('workspace_theme_' + workspaceId, theme);
+                this.changeTheme(theme);
+            }
+            loadWorkspaceThemes() {
+                const ids = ['inneranimalmedia-main', 'meauxide-default'];
+                ids.forEach(id => {
+                    const saved = localStorage.getItem('workspace_theme_' + id);
+                    const sel = document.getElementById('workspace-theme-' + id);
+                    if (sel && saved) sel.value = saved;
+                });
+            }
+            togglePanel(name) {
+                document.querySelectorAll('.sidebar-icon').forEach(i => i.classList.toggle('active', i.getAttribute('data-panel') === name));
+            }
+            toggleUserMenu() {
+                const btn = document.getElementById('header-user-btn');
+                if (!btn) return;
+                const open = btn.getAttribute('aria-expanded') === 'true';
+                btn.setAttribute('aria-expanded', !open);
+                if (!open) this.openSettings();
+            }
+        }
+        function startMeauxIDE() {
+            const ide = new MeauxIDE();
+            window.ide = ide;
+        }
+        function syncDashboardView() {
+            var page = getDashboardPageFromPath(window.location.pathname);
+            if (page === null) return;
+            var ids = getViewAndNavIdsForPage(page);
+            document.querySelectorAll('.page-view').forEach(function (v) { v.classList.add('hidden'); });
+            var view = document.getElementById(ids.viewId);
+            if (view) view.classList.remove('hidden');
+            document.querySelectorAll('.nav-link').forEach(function (l) { l.classList.remove('active'); });
+            var nav = document.getElementById(ids.navId);
+            if (nav) nav.classList.add('active');
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function () { syncDashboardView(); startMeauxIDE(); });
+        } else {
+            syncDashboardView();
+            startMeauxIDE();
+        }
+    </script>
+</body>
+
+</html>
